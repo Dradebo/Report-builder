@@ -193,10 +193,15 @@ const ReportsPage = ({
 
     useEffect(() => {
         if (selectedReport) {
+            const container = document.getElementById('my-table-container')
+            if (!container) {
+                return
+            }
 
-            const aggregateElement = document.body.querySelectorAll("[data-type=" + AGGREGATE.value + "]")
-            const trackerElements = document.body.querySelectorAll("[data-type=" + TRACKER.value + "]")
-            const otherElements = document.body.querySelectorAll("[data-type=" + OTHER_ELEMENT + "]")
+            const aggregateElement = container.querySelectorAll("[data-type=" + AGGREGATE.value + "]")
+            const trackerElements = container.querySelectorAll("[data-type=" + TRACKER.value + "]")
+            const otherElements = container.querySelectorAll("[data-type=" + OTHER_ELEMENT + "]")
+            const comparisonElements = container.querySelectorAll("[data-type='AGGREGATE_COMPARISON']")
 
             if (trackerElements && trackerElements.length > 0) {
                 trackerElements.forEach(el => {
@@ -211,6 +216,12 @@ const ReportsPage = ({
 
             if (aggregateElement && aggregateElement.length > 0) {
                 aggregateElement.forEach(el => {
+                    el.innerHTML = ""
+                })
+            }
+
+            if (comparisonElements && comparisonElements.length > 0) {
+                comparisonElements.forEach(el => {
                     el.innerHTML = ""
                 })
             }
