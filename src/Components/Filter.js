@@ -15,7 +15,7 @@ import {
 } from '@dhis2/ui'
 import { ORGANISATION_UNITS_ROUTE, ORGANISATION_UNIT_LEVELS_ROUTE, ME_ROUTE, PROGRAMS_ROUTE } from '../api.routes'
 
-import { AGGREGATE, DATA_ELEMENT, DAY, MONTH, PAGE_DESIGN, PAGE_REPORT, QUARTER, TRACKER, WEEK, YEAR } from "../utils/constants"
+import { AGGREGATE, ATTRIBUTE, DATA_ELEMENT, DAY, MONTH, PAGE_DESIGN, PAGE_REPORT, QUARTER, TRACKER, WEEK, YEAR } from "../utils/constants"
 import OrganisationUnitsTree from './OrganisationUnitsTree'
 import { DatePicker } from 'antd'
 import { loadDataStore, generateTreeFromOrgUnits } from '../utils/fonctions'
@@ -56,6 +56,7 @@ const Filter = ({
     loadingOrganisationUnits,
     setLoadingOrganisations,
     selectedReport,
+    selectedReportContent,
     setSelectedReport,
     setSelectedReportContent,
     setCurrentOrgUnits,
@@ -88,7 +89,8 @@ const Filter = ({
     setSelectedPeriodType,
     selectedPeriodType,
     legendContents,
-    legends
+    legends,
+    loadLegendContents
 }) => {
     const [visibleOrgUnit, setVisibleOrgUnit] = useState(false)
     const [programs, setPrograms] = useState([])
@@ -189,8 +191,92 @@ const Filter = ({
         }
     }
 
+    const extractLegendIdsFromReportContent = (reportContent) => {
+        const html = reportContent?.html || reportContent
+        if (!html || typeof html !== 'string') {
+            return []
+        }
 
-    const initTrackerProgramsFromHTML = (currentReport) => {
+        const parser = new DOMParser()
+        const doc = parser.parseFromString(html, 'text/html')
+        if (!doc) {
+            return []
+        }
+
+        const legendIds = new Set()
+
+        const aggregateElements = doc.querySelectorAll("[data-type='AGGREGATE']")
+        aggregateElements.forEach(el => {
+            if (el.getAttribute('data-has-legend') === 'YES') {
+                const legendId = el.getAttribute('id')?.split('|')?.[2]
+                if (legendId) {
+                    legendIds.add(legendId)
+                }
+            }
+        })
+
+        const trackerElements = doc.querySelectorAll("[data-type='TRACKER']")
+        trackerElements.forEach(el => {
+            if (el.getAttribute('data-has-legend') === 'YES') {
+                const idParts = el.getAttribute('id')?.split('|') || []
+                const dataIs = el.getAttribute('data-is')
+                let legendId = null
+
+                if (dataIs === DATA_ELEMENT) {
+                    legendId = idParts[3]
+                } else if (dataIs === ATTRIBUTE) {
+                    legendId = idParts[2]
+                } else {
+                    legendId = idParts[2]
+                }
+
+                if (legendId) {
+                    legendIds.add(legendId)
+                }
+            }
+        })
+
+        const comparisonElements = doc.querySelectorAll("[data-type='AGGREGATE_COMPARISON']")
+        comparisonElements.forEach(el => {
+            const legendId = el.getAttribute('data-legend-id')
+            if (legendId) {
+                legendIds.add(legendId)
+            }
+        })
+
+        return Array.from(legendIds)
+    }
+
+    const requiredLegendIds = useMemo(
+        () => extractLegendIdsFromReportContent(selectedReportContent),
+        [selectedReportContent]
+    )
+
+    const knownLegendIds = useMemo(() => {
+        if (!requiredLegendIds.length) {
+            return []
+        }
+
+        const legendIdSet = new Set((legends || []).map(legend => legend?.id).filter(Boolean))
+        return requiredLegendIds.filter(id => legendIdSet.has(id))
+    }, [requiredLegendIds, legends])
+
+    const missingLegendIds = useMemo(() => {
+        if (!knownLegendIds.length) {
+            return []
+        }
+
+        const loadedIds = new Set((legendContents || []).map(legend => legend?.id).filter(Boolean))
+        return knownLegendIds.filter(id => !loadedIds.has(id))
+    }, [knownLegendIds, legendContents])
+
+    const legendDataRequired = knownLegendIds.length > 0
+    const legendDataMissing = legendDataRequired && missingLegendIds.length > 0
+
+
+    const initTrackerProgramsFromHTML = (currentReport, options = {}) => {
+        const shouldSelectProgram = options.shouldSelect !== false
+
         if (currentReport) {
             let parser = new DOMParser()
             const doc = parser.parseFromString(currentReport.html, 'text/html')
@@ -214,8 +300,12 @@ const Filter = ({
 
                 }
 
-                setProgramTrackersFromHTML(trackerprog.map(el_id => programs.find(prog_id => prog_id.id === el_id)))
-                trackerprog.length > 0 && setSelectedProgramTrackerFromHTML(programs.find(prog_id => prog_id.id === trackerprog[0]))
+                const matchedPrograms = trackerprog
+                    .map(el_id => programs.find(prog_id => prog_id.id === el_id))
+                    .filter(Boolean)
+
+                setProgramTrackersFromHTML(matchedPrograms)
+                shouldSelectProgram && matchedPrograms.length > 0 && setSelectedProgramTrackerFromHTML(matchedPrograms[0])
                 data_element_list.length > 0 && setDataElementsFromHTML(data_element_list)
             }
         }
@@ -351,6 +441,11 @@ const Filter = ({
 
     const TrackerDataTypeContent = () => (
         <>
+            {loadingPrograms && (
+                <div className='mt-2 d-flex align-items-center'>
+                    <CircularLoader small /> <span className='ml-2'>Loading programs...</span>
+                </div>
+            )}
             {programTrackersFromHTML.length > 0 && <div className='mt-2'>
                 <Field label="Program">
                     <SingleSelect
@@ -471,12 +566,18 @@ const Filter = ({
                 <Button
                     primary
                     onClick={handleUpdateInformation}
-                    disabled={selectedReport && selectedPeriod && currentOrgUnits.length > 0 ? false : true}
-                    loading={loadingGetDatas || loadingLegendContents}
+                    disabled={!(selectedReport && selectedPeriod && currentOrgUnits.length > 0) || legendDataMissing}
+                    loading={loadingGetDatas || (legendDataMissing && loadingLegendContents)}
                 >
                     Update report
                 </Button>
             </div>
+            {legendDataMissing && (
+                <div className='mt-2 d-flex align-items-center'>
+                    {loadingLegendContents && <CircularLoader small />}
+                    <span className='ml-2'>Loading legend details...</span>
+                </div>
+            )}
         </>
 
     )
@@ -498,71 +599,97 @@ const Filter = ({
         }
     }
 
-    const RenderReportFilter = () => (
-        <>
-            {loadingPrograms || loadingLegendContents ? (
-                <div className='mt-2'>
-                    <CircularLoader small /> <span>Loading...</span>
-                </div>
-            ) : (
+    const RenderReportFilter = () => {
+        const loadingMessage = loadingPrograms && loadingLegendContents
+            ? 'Loading programs and legends...'
+            : loadingPrograms
+                ? 'Loading programs...'
+                : 'Loading legends...'
+
+        return (
+            <>
+                {(loadingPrograms || loadingLegendContents) && (
+                    <div className='mt-2 d-flex align-items-center'>
+                        <CircularLoader small /> <span className='ml-2'>{loadingMessage}</span>
+                    </div>
+                )}
                 <div>
+                    <div className='mt-2'>
+                        <Field label="Which report ?">
+                            <SingleSelect
+                                placeholder='Reports'
+                                selected={selectedReport}
+                                onChange={handleSelectReport}
+                            >
+                                {isDataStoreReportsCreated && reports?.map(report => (
+                                    <SingleSelectOption label={report.name} value={report.id} />
+                                ))}
+
+                                {isDataStoreReportsCreated && reports?.length === 0 && <SingleSelectOption label="No Report" />}
+                            </SingleSelect>
+                        </Field>
+                    </div>
+                    {
+                        loadingReportContent && (
+                            <div className='d-flex align-items-center mt-2'>
+                                <div> <CircularLoader small /> </div>
+                                <div className='ml-3'> Loading...</div>
+                            </div>
+                        )
+                    }
+
+                    {
+                        dataTypesFromHTML.length > 0 && (
                             <div className='mt-2'>
-                                <Field label="Which report ?">
+                                <div className='my-2'>
+                                    <NoticeBox title="Report">As your report contains tracker and aggregate data , you must generate your report by selecting data type one by one</NoticeBox>
+                                </div>
+                                <Field label="Data Type">
                                     <SingleSelect
                                         placeholder='Reports'
-                                        selected={selectedReport}
-                                        onChange={handleSelectReport}
+                                        selected={selectedDataTypeFromHTML}
+                                        onChange={handleSelectDataTypeFromHTML}
                                     >
-                                        {isDataStoreReportsCreated && reports?.map(report => (
-                                            <SingleSelectOption label={report.name} value={report.id} />
+                                        {dataTypesFromHTML.map(dataType => (
+                                            <SingleSelectOption label={dataType.name} value={dataType.id} />
                                         ))}
-
-                                        {isDataStoreReportsCreated && reports?.length === 0 && <SingleSelectOption label="No Report" />}
                                     </SingleSelect>
                                 </Field>
                             </div>
-                            {
-                                loadingReportContent && (
-                                    <div className='d-flex align-items-center mt-2'>
-                                        <div> <CircularLoader small /> </div>
-                                        <div className='ml-3'> Loading...</div>
-                                    </div>
-                                )
-                            }
+                        )
+                    }
 
-                            {
-                                dataTypesFromHTML.length > 0 && (
-                                    <div className='mt-2'>
-                                        <div className='my-2'>
-                                            <NoticeBox title="Report">As your report contains tracker and aggregate data , you must generate your report by selecting data type one by one</NoticeBox>
-                                        </div>
-                                        <Field label="Data Type">
-                                            <SingleSelect
-                                                placeholder='Reports'
-                                                selected={selectedDataTypeFromHTML}
-                                                onChange={handleSelectDataTypeFromHTML}
-                                            >
-                                                {dataTypesFromHTML.map(dataType => (
-                                                    <SingleSelectOption label={dataType.name} value={dataType.id} />
-                                                ))}
-                                            </SingleSelect>
-                                        </Field>
-                                    </div>
-                                )
-                            }
+                    {selectedDataTypeFromHTML === TRACKER.value && TrackerDataTypeContent()}
+                    {selectedDataTypeFromHTML === AGGREGATE.value && AggregateDataTypeContent()}
 
-                            {selectedDataTypeFromHTML === TRACKER.value && TrackerDataTypeContent()}
-                            {selectedDataTypeFromHTML === AGGREGATE.value && AggregateDataTypeContent()}
-
-                            {OrganisationUnitModal()}
-
-
-                        </div>
-            )}
-        </>
-    )
+                    {OrganisationUnitModal()}
+                </div>
+            </>
+        )
+    }
 
     const RenderDesignFilter = () => <div className='mt-2'></div>
+
+    useEffect(() => {
+        if (!legendDataMissing || loadingLegendContents) {
+            return
+        }
+
+        if (!loadLegendContents || !legends || legends.length === 0) {
+            return
+        }
+
+        const legendsToLoad = legends.filter(legend => missingLegendIds.includes(legend.id))
+        if (legendsToLoad.length > 0) {
+            loadLegendContents(legendsToLoad).catch(() => {})
+        }
+    }, [legendDataMissing, loadingLegendContents, loadLegendContents, legends, missingLegendIds])
+
+    useEffect(() => {
+        if (selectedReportContent && selectedDataTypeFromHTML === TRACKER.value && programs.length > 0) {
+            initTrackerProgramsFromHTML(selectedReportContent, { shouldSelect: false })
+        }
+    }, [programs, selectedDataTypeFromHTML, selectedReportContent])
 
     useEffect(() => {
         loadOrgUnitLevels()

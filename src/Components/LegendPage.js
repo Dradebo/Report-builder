@@ -324,7 +324,7 @@ const LegendPage = ({
             await saveDataToDataStore(`LEGEND_${payloadLegendContent.id}`, payloadLegendContent, null, null, null, true)
 
             const legendList = await loadDataStore(process.env.REACT_APP_LEGENDS_KEY, setLoadingLegends, setLegends, [])
-            loadLegendContents(legendList)
+            await loadLegendContents(legendList, { force: true })
 
             // Clean all state 
             cleanStateAddLegend()

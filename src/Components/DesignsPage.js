@@ -144,6 +144,48 @@ const DesignsPage = ({
   const [loadingInitState, setLoadingInitState] = useState(false)
   const [loadingProcess, setLoadingProcess] = useState(false)
 
+  const indicatorAttributesToClear = [
+    'id',
+    'data-type',
+    'data-has-legend',
+    'data-has-organisationunitgroup',
+    'data-is',
+    'data-attribute-value-type',
+    'data-isSearchable',
+    'data-comparison-mode',
+    'data-comparison-operator',
+    'data-primary-id',
+    'data-primary-offset',
+    'data-comparison-id',
+    'data-comparison-offset',
+    'data-conditions',
+    'data-legend-id',
+    'data-legend-type',
+    'data-ou-level',
+  ]
+
+  const clearIndicatorAttributes = (element, { clearContent } = {}) => {
+    if (!element || typeof element.removeAttribute !== 'function') {
+      return
+    }
+
+    indicatorAttributesToClear.forEach(attr => element.removeAttribute(attr))
+
+    if (element.classList) {
+      element.classList.remove('comparison-indicator-simple', 'comparison-indicator-conditional')
+    } else {
+      window.$(element).removeClass('comparison-indicator-simple comparison-indicator-conditional')
+    }
+
+    if (clearContent) {
+      element.innerHTML = ''
+    }
+  }
+
+  const selectedElementType = currentHtmlTagSelected?.getAttribute?.('data-type')
+  const selectedElementId = currentHtmlTagSelected?.getAttribute?.('id')
+  const selectedElementText = currentHtmlTagSelected?.textContent
+
   const initSummernote = (existing_html) => {
     window.$(document).ready(function () {
       if (existing_html) {
@@ -154,13 +196,15 @@ const DesignsPage = ({
         callbacks: {
           onInit: function (event) {
             $(".note-editable").on('click', function (e) {
-              setCurrentHtmlTagSelected(e.target)
-              const targetID = e.target.id
-              if (targetID) {
-                const textContent = document.getElementById(targetID).textContent
-                if (!textContent || textContent.length === 0) {
-                  document.getElementById(targetID).innerHTML = ""
-                  document.getElementById(targetID).removeAttribute('id')
+              const target = e.target
+              setCurrentHtmlTagSelected(target)
+              const textContent = target?.textContent
+              if (!textContent || textContent.length === 0) {
+                if (target?.getAttribute?.('data-type')) {
+                  clearIndicatorAttributes(target, { clearContent: true })
+                } else if (target?.id) {
+                  target.innerHTML = ''
+                  target.removeAttribute('id')
                 }
               }
             })
@@ -332,6 +376,15 @@ const DesignsPage = ({
     setPrimaryPeriodOffset('0')
     setComparisonPeriodOffset('-1')
     setComparisonOperator('DIFFERENCE')
+  }
+
+  const handleClearSelectedHtmlElement = () => {
+    if (!currentHtmlTagSelected || !currentHtmlTagSelected?.getAttribute?.('data-type')) {
+      return
+    }
+
+    clearIndicatorAttributes(currentHtmlTagSelected, { clearContent: true })
+    setCurrentHtmlTagSelected(null)
   }
 
 
@@ -1609,6 +1662,37 @@ const DesignsPage = ({
                 <Button dense icon={<AiOutlineSearch style={{ color: "#fff", fontSize: "18px" }} />} primary onClick={() => setSearchMode(true)}>Search</Button>
               </div>
             </div>
+            {selectedElementType && (
+              <div className='mt-2 p-2 bg-white rounded border my-shadow'>
+                <div style={{ fontWeight: 'bold', fontSize: '13px' }}>Selected element</div>
+                <div style={{ fontSize: '12px', color: '#666' }}>
+                  Type: {selectedElementType}{selectedElementId ? ` | ${selectedElementId}` : ''}
+                </div>
+                {selectedElementText && (
+                  <div style={{ fontSize: '12px', color: '#666', marginTop: '4px' }}>
+                    {selectedElementText}
+                  </div>
+                )}
+                <div className='mt-2'>
+                  <Popconfirm
+                    title="Remove element"
+                    description="Remove the selected element from the report?"
+                    onConfirm={handleClearSelectedHtmlElement}
+                    icon={
+                      <QuestionCircleOutlined
+                        style={{
+                          color: 'red',
+                        }}
+                      />
+                    }
+                  >
+                    <Button small destructive>
+                      Remove selected element
+                    </Button>
+                  </Popconfirm>
+                </div>
+              </div>
+            )}
             {isSearchMode && (
               <div style={{ margin: "20px 0px", }}>
                 <div>Search in all elements</div>

@@ -79,7 +79,7 @@ const App = () => {
     const initDataStore = async () => {
         try {
             setLoadingDataStoreInitialization(true)
-            const legs = await loadDataStore(process.env.REACT_APP_LEGENDS_KEY, null, setLegends, [])
+            await loadDataStore(process.env.REACT_APP_LEGENDS_KEY, null, setLegends, [])
             loadDataStore(process.env.REACT_APP_REPORTS_KEY, setLoadingReports, setReports, [])
             loadDataStore(process.env.REACT_APP_SMS_CONFIG_KEY, setLoadingSmsConfigs, setSmsConfigs, [])
 
@@ -88,7 +88,6 @@ const App = () => {
 
             setLoadingDataStoreInitialization(false)
             setDataStoreReportsCreated(true)
-            loadLegendContents(legs)
         } catch (err) {
             setNotif({ show: true, message: err?.response?.data?.message || err.message, type: NOTIFICATON_CRITICAL })
             setDataStoreReportsCreated(false)
@@ -115,26 +114,50 @@ const App = () => {
         }
     }
 
-    const loadLegendContents = async (legendList) => {
+    const loadLegendContents = async (legendList = [], options = {}) => {
         try {
-            setLoadingLegendContents(true)
+            const legendIds = (legendList || [])
+                .map(leg => (typeof leg === 'string' ? leg : leg?.id))
+                .filter(Boolean)
 
-            if (legendList.length === 0) {
-                setLoadingLegendContents(false)
+            const uniqueLegendIds = Array.from(new Set(legendIds))
+
+            if (uniqueLegendIds.length === 0) {
                 return
             }
 
-            console.log(`[Report Builder] Loading ${legendList.length} legend contents`)
+            const forceReload = options?.force === true
+            const loadedIds = new Set((legendContents || []).map(legend => legend?.id).filter(Boolean))
+            const idsToLoad = forceReload ? uniqueLegendIds : uniqueLegendIds.filter(id => !loadedIds.has(id))
 
-            // Use Promise.all to wait for all legends to load
-            const legendPromises = legendList.map(leg =>
-                loadDataStore(`LEGEND_${leg.id}`, null, null, {})
+            if (idsToLoad.length === 0) {
+                return
+            }
+
+            setLoadingLegendContents(true)
+            console.log(`[Report Builder] Loading ${idsToLoad.length} legend contents`)
+
+            const legendPromises = idsToLoad.map(id =>
+                loadDataStore(`LEGEND_${id}`, null, null, {})
             )
 
             const loadedLegends = await Promise.all(legendPromises)
 
             console.log(`[Report Builder] Loaded ${loadedLegends.length} legend contents`)
-            setLegendContents(loadedLegends)
+            setLegendContents(prev => {
+                const filtered = forceReload
+                    ? (prev || []).filter(legend => !idsToLoad.includes(legend?.id))
+                    : [...(prev || [])]
+                const next = [...filtered]
+
+                loadedLegends.forEach(legend => {
+                    if (legend?.id && !next.some(existing => existing?.id === legend.id)) {
+                        next.push(legend)
+                    }
+                })
+
+                return next
+            })
             setLoadingLegendContents(false)
 
         } catch (err) {
@@ -649,6 +672,7 @@ const App = () => {
                             setSelectedPeriods={setSelectedPeriods}
                             legendContents={legendContents}
                             legends={legends}
+                            loadLegendContents={loadLegendContents}
                         />
 
                     </div>
