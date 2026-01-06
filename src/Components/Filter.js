@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react'
+import React, { useEffect, useState, useMemo } from 'react'
 import {
     SingleSelect,
     SingleSelectOption,
@@ -18,7 +18,8 @@ import { ORGANISATION_UNITS_ROUTE, ORGANISATION_UNIT_LEVELS_ROUTE, ME_ROUTE, PRO
 import { AGGREGATE, DATA_ELEMENT, DAY, MONTH, PAGE_DESIGN, PAGE_REPORT, QUARTER, TRACKER, WEEK, YEAR } from "../utils/constants"
 import OrganisationUnitsTree from './OrganisationUnitsTree'
 import { DatePicker } from 'antd'
-import { loadDataStore } from '../utils/fonctions'
+import { loadDataStore, generateTreeFromOrgUnits } from '../utils/fonctions'
+import { CarryOutOutlined } from '@ant-design/icons'
 
 
 const PeriodFieldType = ({ setState, state, setSelectedPeriod }) => {
@@ -95,6 +96,14 @@ const Filter = ({
     const [loadingPrograms, setLoadingPrograms] = useState(false)
     const [loadingReportContent, setLoadingReportContent] = useState(false)
 
+    // Pre-generate org unit tree when org units are loaded
+    const orgUnitTree = useMemo(() => {
+        if (orgUnits && orgUnits.length > 0 && meOrgUnitId) {
+            return generateTreeFromOrgUnits(orgUnits, <CarryOutOutlined />, meOrgUnitId)
+        }
+        return []
+    }, [orgUnits, meOrgUnitId])
+
 
     const loadOrgUnitLevels = async _ => {
         try {
@@ -144,7 +153,7 @@ const Filter = ({
             if (response.status === "ERROR")
                 throw response
 
-            const programs = response.programs.map(p => ({ ...p, programTrackedEntityAttributes: p.programTrackedEntityAttributes.map(at => ({ ...at, dataType: p.programType })) }))
+            const programs = response.programs.map(p => ({ ...p, programTrackedEntityAttributes: (p.programTrackedEntityAttributes || []).map(at => ({ ...at, dataType: p.programType })) }))
             setLoadingPrograms(false)
             setPrograms(programs)
         } catch (err) {
@@ -213,9 +222,10 @@ const Filter = ({
     }
 
     const initAggregateFromHTML = (currentReport) => {
-        if (currentReport) {
+        if (currentReport && currentReport.html) {
             let parser = new DOMParser()
             const doc = parser.parseFromString(currentReport.html, 'text/html')
+            // Aggregate initialization complete - form fields will render based on selectedDataTypeFromHTML state
         }
     }
 
@@ -233,10 +243,12 @@ const Filter = ({
                 let parser = new DOMParser()
                 const doc = parser.parseFromString(currentReportContent.html, 'text/html')
                 const aggregateElement = doc.querySelectorAll("[data-type='AGGREGATE']")
+                const comparisonElement = doc.querySelectorAll("[data-type='AGGREGATE_COMPARISON']")
                 const trackerElement = doc.querySelectorAll("[data-type='TRACKER']")
 
                 let dataTypes = []
-                if (aggregateElement.length > 0)
+                // Comparison elements are also aggregate type
+                if (aggregateElement.length > 0 || comparisonElement.length > 0)
                     dataTypes.push({ id: AGGREGATE.value, name: AGGREGATE.name })
 
                 if (trackerElement.length > 0)
@@ -296,6 +308,7 @@ const Filter = ({
                         loadingOrganisationUnits={loadingOrganisationUnits}
                         setLoadingOrganisations={setLoadingOrganisations}
                         meOrgUnitId={meOrgUnitId}
+                        preGeneratedTree={orgUnitTree}
                     />
                 </div>
                 {
@@ -329,10 +342,10 @@ const Filter = ({
     }
 
     const handleSelectSearchProperties = (att) => {
-        if (!searchProperties.map(s => s.id).includes(att.id)) {
-            setSearchProperties([...searchProperties, att])
+        if (!(searchProperties || []).map(s => s.id).includes(att.id)) {
+            setSearchProperties([...(searchProperties || []), att])
         } else {
-            setSearchProperties(searchProperties.filter(s => s.id !== att.id))
+            setSearchProperties((searchProperties || []).filter(s => s.id !== att.id))
         }
     }
 
@@ -356,8 +369,19 @@ const Filter = ({
             {
                 selectedProgramTrackerFromHTML && (
                     <div className='mt-4'>
-                        <div className='py-1 px-2 rounded- font-weight-bold text-center' style={{ backgroundColor: "#06695c", color: '#fff', cursor: "pointer" }} onClick={() => setVisibleOrgUnit(true)}>
-                            {currentOrgUnits.length > 0 ? currentOrgUnits[0].name : 'Select organisation unit'}
+                        <div
+                            className='py-1 px-2 rounded- font-weight-bold text-center'
+                            style={{
+                                backgroundColor: loadingOrganisationUnits ? "#ccc" : "#06695c",
+                                color: '#fff',
+                                cursor: loadingOrganisationUnits ? "not-allowed" : "pointer",
+                                opacity: loadingOrganisationUnits ? 0.6 : 1
+                            }}
+                            onClick={() => !loadingOrganisationUnits && setVisibleOrgUnit(true)}
+                        >
+                            {loadingOrganisationUnits
+                                ? 'Loading organisation units...'
+                                : currentOrgUnits.length > 0 ? currentOrgUnits[0].name : 'Select organisation unit'}
                         </div>
                     </div>
                 )
@@ -389,14 +413,13 @@ const Filter = ({
                         </div>
                         <div className='collapse' id="searchByAttributeCollapse">
                             {
-                                selectedProgramTrackerFromHTML?.
-                                    programTrackedEntityAttributes?.map(att =>
-                                        <Checkbox
-                                            checked={searchProperties.map(s => s.id).includes(att.id)}
-                                            label={<div style={{ fontSize: "14px", color: "#00000099" }}> {att.trackedEntityAttribute?.name} </div>}
-                                            key={att.id} onChange={({ checked }) => handleSelectSearchProperties(att)}
-                                        />
-                                    )
+                                (selectedProgramTrackerFromHTML?.programTrackedEntityAttributes || []).map(att =>
+                                    <Checkbox
+                                        checked={searchProperties.map(s => s.id).includes(att.id)}
+                                        label={<div style={{ fontSize: "14px", color: "#00000099" }}> {att.trackedEntityAttribute?.name} </div>}
+                                        key={att.id} onChange={({ checked }) => handleSelectSearchProperties(att)}
+                                    />
+                                )
                             }
                         </div>
                     </div>
@@ -428,8 +451,19 @@ const Filter = ({
             </div>
 
             <div className='mt-4'>
-                <div className='py-1 px-2 rounded- font-weight-bold text-center' style={{ backgroundColor: "#06695c", color: '#fff', cursor: "pointer" }} onClick={() => setVisibleOrgUnit(true)}>
-                    {currentOrgUnits.length > 0 ? currentOrgUnits[0].name : 'Select organisation unit'}
+                <div
+                    className='py-1 px-2 rounded- font-weight-bold text-center'
+                    style={{
+                        backgroundColor: loadingOrganisationUnits ? "#ccc" : "#06695c",
+                        color: '#fff',
+                        cursor: loadingOrganisationUnits ? "not-allowed" : "pointer",
+                        opacity: loadingOrganisationUnits ? 0.6 : 1
+                    }}
+                    onClick={() => !loadingOrganisationUnits && setVisibleOrgUnit(true)}
+                >
+                    {loadingOrganisationUnits
+                        ? 'Loading organisation units...'
+                        : currentOrgUnits.length > 0 ? currentOrgUnits[0].name : 'Select organisation unit'}
                 </div>
             </div>
 
@@ -447,34 +481,31 @@ const Filter = ({
 
     )
 
-    const handleSelectDataTypeFromHTML = ({ selected }) => {
+    const handleSelectDataTypeFromHTML = async ({ selected }) => {
         const currentReport = reports.find(r => r.id === selectedReport)
 
         if (selected && currentReport) {
             setSelectedDataTypeFromHTML(selected)
 
+            // Load report content to initialize properly
+            const currentReportContent = await loadDataStore(`REPORT_${currentReport?.id}`, null, null, {})
+
             if (selected === AGGREGATE.value)
-                initAggregateFromHTML(currentReport)
+                initAggregateFromHTML(currentReportContent)
 
             if (selected === TRACKER.value)
-                initTrackerProgramsFromHTML(currentReport)
+                initTrackerProgramsFromHTML(currentReportContent)
         }
-    }
-
-    const calculatePercentage = (value, total) => {
-        return Math.round(parseInt(value * 100) / total) || 0
     }
 
     const RenderReportFilter = () => (
         <>
-            {
-                loadingPrograms || orgUnits.length === 0 || loadingLegendContents ?
-                    (
-                        <div className='mt-2' style={{ display: 'flex', alignItems: 'center' }}>
-                            <CircularLoader small /> <span style={{ marginLeft: '5px' }}>Loading... <span style={{ marginLeft: '5px', color: '#00000090' }}> {calculatePercentage(legendContents.length || 0, legends.length || 0)} %</span></span>
-                        </div>
-                    ) : (
-                        <div>
+            {loadingPrograms || loadingLegendContents ? (
+                <div className='mt-2'>
+                    <CircularLoader small /> <span>Loading...</span>
+                </div>
+            ) : (
+                <div>
                             <div className='mt-2'>
                                 <Field label="Which report ?">
                                     <SingleSelect
@@ -525,10 +556,9 @@ const Filter = ({
 
                             {OrganisationUnitModal()}
 
-                        
+
                         </div>
-                    )
-            }
+            )}
         </>
     )
 

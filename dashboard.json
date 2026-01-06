@@ -1,0 +1,200 @@
+{
+  "pager": {
+    "page": 1,
+    "pageSize": 50
+  },
+  "dashboardItems": [
+    {
+      "id": "SOV4jzWSoXT",
+      "height": 48,
+      "x": 0,
+      "width": 19,
+      "y": 0,
+      "lastUpdated": "2025-08-06T11:35:31.840",
+      "created": "2025-08-06T11:35:31.657",
+      "visualization": "OVVLR2tVGtv",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/OVVLR2tVGtv/gist"
+      }
+    },
+    {
+      "id": "iqXvD7QsNmb",
+      "height": 12,
+      "x": 19,
+      "width": 11,
+      "y": 0,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "EfCxF7A9Jk7",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/EfCxF7A9Jk7/gist"
+      }
+    },
+    {
+      "id": "VrMKAxSkiJc",
+      "height": 12,
+      "x": 19,
+      "width": 11,
+      "y": 12,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "IXfv7JFhTVH",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/IXfv7JFhTVH/gist"
+      }
+    },
+    {
+      "id": "pwDKPPOP4hi",
+      "height": 12,
+      "x": 19,
+      "width": 11,
+      "y": 24,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "lyDK3Ip0XTr",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/lyDK3Ip0XTr/gist"
+      }
+    },
+    {
+      "id": "RZT7hoKdGpF",
+      "height": 12,
+      "x": 19,
+      "width": 11,
+      "y": 36,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "v5of0zdznks",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/v5of0zdznks/gist"
+      }
+    },
+    {
+      "id": "sp4ZsOtillZ",
+      "height": 12,
+      "x": 30,
+      "width": 13,
+      "y": 0,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "fUhYc9xJJIf",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/fUhYc9xJJIf/gist"
+      }
+    },
+    {
+      "id": "pkLgUydxKph",
+      "height": 12,
+      "x": 30,
+      "width": 13,
+      "y": 12,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "L3bwMuX743O",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/L3bwMuX743O/gist"
+      }
+    },
+    {
+      "id": "tF92BOKKZBa",
+      "height": 12,
+      "x": 30,
+      "width": 13,
+      "y": 24,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "Zh1q352Hmng",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/Zh1q352Hmng/gist"
+      }
+    },
+    {
+      "id": "nyJEvCvVfGO",
+      "height": 12,
+      "x": 30,
+      "width": 13,
+      "y": 36,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "LjxXRxvyT2z",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/LjxXRxvyT2z/gist"
+      }
+    },
+    {
+      "id": "aN2JH1JoU8f",
+      "height": 12,
+      "x": 43,
+      "width": 13,
+      "y": 0,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "cOZI8M5qpot",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/cOZI8M5qpot/gist"
+      }
+    },
+    {
+      "id": "qvmZjewObgx",
+      "height": 12,
+      "x": 43,
+      "width": 13,
+      "y": 12,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "HNNXPz8X1So",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/HNNXPz8X1So/gist"
+      }
+    },
+    {
+      "id": "IQTwQ4aNdnl",
+      "height": 12,
+      "x": 43,
+      "width": 13,
+      "y": 24,
+      "lastUpdated": "2025-08-06T11:35:31.841",
+      "created": "2025-08-06T11:35:31.658",
+      "visualization": "VVkfZpKSBX0",
+      "reports": 0,
+      "resources": 0,
+      "users": 0,
+      "apiEndpoints": {
+        "visualization": "/visualizations/VVkfZpKSBX0/gist"
+      }
+    }
+  ]
+}

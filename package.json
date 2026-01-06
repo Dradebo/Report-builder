@@ -5,15 +5,21 @@
   "license": "BSD-3-Clause",
   "private": true,
   "scripts": {
-    "start": "d2-app-scripts start",
+    "start": "NODE_OPTIONS=--openssl-legacy-provider d2-app-scripts start --proxy https://emisuganda.org/emis",
     "test": "d2-app-scripts test",
     "deploy": "d2-app-scripts deploy",
-    "build": "d2-app-scripts build && yarn manifest && cd build && cp -r manifest.webapp app && cd app && zip -r ../../report-builder.zip * && cd ../../ && rm -r build && mkdir build && mv report-builder.zip build && clear",
+    "build": "NODE_OPTIONS=--openssl-legacy-provider d2-app-scripts build && yarn manifest && cd build && cp -r manifest.webapp app && cd app && zip -r ../../report-builder.zip * && cd ../../ && rm -r build && mkdir build && mv report-builder.zip build && clear",
     "prod": "yarn build",
-    "manifest": "d2-manifest package.json build/manifest.webapp"
+    "manifest": "d2-manifest package.json build/manifest.webapp",
+    "dev:watch": "concurrently \"nodemon --watch src --exec 'yarn build:dev'\" \"nodemon --watch dev-server.js --watch .env.local dev-server.js\"",
+    "build:dev": "NODE_OPTIONS=--openssl-legacy-provider d2-app-scripts build && yarn manifest && cd build && cp -r manifest.webapp app"
   },
   "devDependencies": {
-    "@dhis2/cli-app-scripts": "^9.0.1"
+    "@dhis2/cli-app-scripts": "^9.0.1",
+    "concurrently": "^9.2.1",
+    "express": "^5.1.0",
+    "nodemon": "^3.1.10",
+    "serve": "^14.2.5"
   },
   "dependencies": {
     "@ant-design/icons": "^4.7.0",
@@ -26,6 +32,7 @@
     "axios": "^1.5.0",
     "d2-manifest": "^1.0.0",
     "dayjs": "^1.11.9",
+    "dotenv": "^17.2.3",
     "proptypes": "^1.1.0",
     "react-color": "^2.19.3",
     "react-custom-scrollbars-2": "^4.5.0",
@@ -43,5 +50,10 @@
     "icons": {
       "48": "dhis2-app-icon.png"
     }
+  },
+  "packageManager": "yarn@1.22.22+sha512.a6b2f7906b721bba3d67d4aff083df04dad64c399707841b7acf00f6b133b7ac24255f2652fa22ae3534329dc6180534e98d17432037ff6fd140556e2bb3137e",
+  "resolutions": {
+    "react": "16.14.0",
+    "react-dom": "16.14.0"
   }
 }

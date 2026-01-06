@@ -29,6 +29,7 @@ import { QuestionCircleOutlined } from '@ant-design/icons';
 import { v4 as uuid } from 'uuid'
 import Scrollbars from 'react-custom-scrollbars-2'
 import TrackerDimensionsDialog from './TrackerDimensionsDialog'
+import ComparisonDimensionModal from './ComparisonDimensionModal'
 import { BiEdit } from 'react-icons/bi'
 import { RiDeleteBinLine } from 'react-icons/ri'
 import dayjs from 'dayjs'
@@ -127,6 +128,16 @@ const DesignsPage = ({
   const [visibleAddReport, setVisibleAddReport] = useState(false)
   const [visibleSelectDXTrackerModal, setVisibleSelectDXTrackerModal] = useState(false)
   const [visibleSelectDXAggregateModal, setVisibleSelectDXAggregateModal] = useState(false)
+  const [visibleComparisonModal, setVisibleComparisonModal] = useState(false)
+  const [enableComparison, setEnableComparison] = useState(false)
+  const [comparisonIndicator, setComparisonIndicator] = useState(null)
+  const [primaryPeriodOffset, setPrimaryPeriodOffset] = useState('0')
+  const [comparisonPeriodOffset, setComparisonPeriodOffset] = useState('-1')
+  const [comparisonOperator, setComparisonOperator] = useState('DIFFERENCE')
+
+  // New state for conditional comparison
+  const [comparisonMode, setComparisonMode] = useState('SIMPLE')
+  const [comparisonConditions, setComparisonConditions] = useState([])
 
   const [visibleOtherOrganisationUnitElementModal, setVisibleOtherOrganisationUnitElementModal] = useState(false)
 
@@ -167,6 +178,16 @@ const DesignsPage = ({
         setReportName(curr.name)
         setCurrentReport(curr)
         setCurrentReportContent(currContent)
+
+        // Restore configured dimensions if they exist in the report content
+        if (currContent.selectedConfigDimensionsAggregate) {
+          setSelectedConfigDimensionsAggregate(currContent.selectedConfigDimensionsAggregate)
+        }
+
+        // Restore tracker configuration if it exists
+        if (currContent.selectedTrackerConfigDimensionsPrograms) {
+          setSelectedTrackerConfigDimensionsPrograms(currContent.selectedTrackerConfigDimensionsPrograms)
+        }
 
         initSummernote(currContent.html)
         setLoadingInitState(false)
@@ -226,7 +247,9 @@ const DesignsPage = ({
           selectedProgram: selectedProgram,
           name: reportName,
           updatedAt: dayjs(),
-          searchProperties
+          searchProperties,
+          selectedConfigDimensionsAggregate,
+          selectedTrackerConfigDimensionsPrograms
         }
 
       } else {
@@ -251,6 +274,8 @@ const DesignsPage = ({
           html: html_code,
           searchProperties,
           selectedProgram: selectedProgram,
+          selectedConfigDimensionsAggregate,
+          selectedTrackerConfigDimensionsPrograms,
           createdAt: dayjs(),
           updatedAt: dayjs(),
         }
@@ -302,6 +327,11 @@ const DesignsPage = ({
     setVisibleSelectDXAggregateModal(false)
     setSelectedOuLevelToDisplay(null)
     setSelectedTypeLegendToDisplay(null)
+    setEnableComparison(false)
+    setComparisonIndicator(null)
+    setPrimaryPeriodOffset('0')
+    setComparisonPeriodOffset('-1')
+    setComparisonOperator('DIFFERENCE')
   }
 
 
@@ -478,6 +508,67 @@ const DesignsPage = ({
   const handleInjectAggregateIds = () => {
 
     if (currentDimensionSelected) {
+      // Handle comparison element injection
+      if (enableComparison && comparisonIndicator) {
+        const elementId = `${getCorrectID(currentDimensionSelected)}|${getCorrectID(comparisonIndicator)}|COMPARISON`
+        const displayName = `${currentDimensionSelected.name} vs ${comparisonIndicator.name}`
+
+        // Set ID attribute
+        window.$(currentHtmlTagSelected).attr("id", elementId)
+        window.$(currentHtmlTagSelected).attr("data-type", "AGGREGATE_COMPARISON")
+
+        if (comparisonMode === 'CONDITIONAL') {
+          // CONDITIONAL mode: serialize conditions array to JSON
+          // Note: jQuery attr() handles escaping automatically, no need for .replace(/"/g, '&quot;')
+          const conditionsJson = JSON.stringify(comparisonConditions)
+
+          // Set CONDITIONAL mode attributes
+          window.$(currentHtmlTagSelected).attr("data-comparison-mode", "CONDITIONAL")
+          window.$(currentHtmlTagSelected).attr("data-primary-id", getCorrectID(currentDimensionSelected))
+          window.$(currentHtmlTagSelected).attr("data-primary-offset", primaryPeriodOffset)
+          window.$(currentHtmlTagSelected).attr("data-comparison-id", getCorrectID(comparisonIndicator))
+          window.$(currentHtmlTagSelected).attr("data-comparison-offset", comparisonPeriodOffset)
+          window.$(currentHtmlTagSelected).attr("data-conditions", conditionsJson)
+          window.$(currentHtmlTagSelected).attr("data-legend-id", legendToUse || '')
+          window.$(currentHtmlTagSelected).attr("data-legend-type", selectedTypeLegendToDisplay || '')
+          window.$(currentHtmlTagSelected).attr("data-ou-level", selectedOuLevelToDisplay)
+          window.$(currentHtmlTagSelected).attr("class", "comparison-indicator-conditional")
+        } else {
+          // SIMPLE mode: set operator-based attributes
+          window.$(currentHtmlTagSelected).attr("data-comparison-mode", "SIMPLE")
+          window.$(currentHtmlTagSelected).attr("data-comparison-operator", comparisonOperator)
+          window.$(currentHtmlTagSelected).attr("data-primary-id", getCorrectID(currentDimensionSelected))
+          window.$(currentHtmlTagSelected).attr("data-primary-offset", primaryPeriodOffset)
+          window.$(currentHtmlTagSelected).attr("data-comparison-id", getCorrectID(comparisonIndicator))
+          window.$(currentHtmlTagSelected).attr("data-comparison-offset", comparisonPeriodOffset)
+          window.$(currentHtmlTagSelected).attr("data-has-legend", selectedRadioTypeLegend === 'LEGEND' ? 'YES' : 'NO')
+          window.$(currentHtmlTagSelected).attr("data-legend-id", selectedRadioTypeLegend === 'LEGEND' ? legendToUse || '' : '')
+          window.$(currentHtmlTagSelected).attr("data-legend-type", selectedRadioTypeLegend === 'LEGEND' ? selectedTypeLegendToDisplay || '' : '')
+          window.$(currentHtmlTagSelected).attr("data-ou-level", selectedOuLevelToDisplay)
+          window.$(currentHtmlTagSelected).attr("class", "comparison-indicator-simple")
+        }
+
+        // Set display name (mimics regular indicator behavior)
+        window.$(currentHtmlTagSelected).html('')
+        window.$(currentHtmlTagSelected).html(displayName)
+        setVisibleSelectDXAggregateModal(false)
+        setCurrentDimensionSelected(null)
+        setCurrentHtmlTagSelected(null)
+        setSelectedOuLevelToDisplay(null)
+        setSelectedOuGroupToDisplay(null)
+        setSelectedTypeLegendToDisplay(null)
+        setLegendToUse(null)
+        setEnableComparison(false)
+        setComparisonIndicator(null)
+        setPrimaryPeriodOffset('0')
+        setComparisonPeriodOffset('-1')
+        setComparisonOperator('DIFFERENCE')
+        setComparisonMode('SIMPLE')
+        setComparisonConditions([])
+        return
+      }
+
+      // Handle regular aggregate element injection
       let id_string = ""
       let name_string = ""
       let has_legend = 'NO'
@@ -702,14 +793,14 @@ const DesignsPage = ({
           placeholder="Attribute"
           selected={selectedAttributeToDisplay?.id}
           onChange={({ selected }) => {
-            const attr_object = selectedProgramToDisplay.programTrackedEntityAttributes.map(pgAtt => pgAtt.trackedEntityAttribute).find(att => att.id === selected)
+            const attr_object = (selectedProgramToDisplay.programTrackedEntityAttributes || []).map(pgAtt => pgAtt.trackedEntityAttribute).find(att => att.id === selected)
             if (attr_object) {
               setSelectedAttributeToDisplay(attr_object)
               setSelectedAttributeValueTypeToDisplay(attr_object.valueType)
             }
           }}
         >
-          {selectedProgramToDisplay.programTrackedEntityAttributes
+          {(selectedProgramToDisplay.programTrackedEntityAttributes || [])
             .map(p => <SingleSelectOption key={p.id} value={p.trackedEntityAttribute?.id} label={p.trackedEntityAttribute?.name} />)
           }
         </SingleSelect>
@@ -719,7 +810,7 @@ const DesignsPage = ({
 
 
   const handleSelectedProgramStage = ({ selected }) => {
-    setSelectedProgramStageToDisplay(selectedProgramToDisplay.programStages.find(p => p.id === selected))
+    setSelectedProgramStageToDisplay((selectedProgramToDisplay.programStages || []).find(p => p.id === selected))
     setSelectedDataElementDimensionToDisplay(null)
   }
 
@@ -732,7 +823,7 @@ const DesignsPage = ({
             placeholder="Program stage"
             selected={selectedProgramStageToDisplay?.id}
             onChange={handleSelectedProgramStage} >
-            {selectedProgramToDisplay.programStages.map(programStage => (
+            {(selectedProgramToDisplay.programStages || []).map(programStage => (
               <SingleSelectOption value={programStage.id} key={programStage.id} label={programStage.name} />
             ))}
           </SingleSelect>
@@ -746,9 +837,9 @@ const DesignsPage = ({
           <SingleSelect
             placeholder="Data element"
             selected={selectedDataElementDimensionToDisplay?.id}
-            onChange={({ selected }) => setSelectedDataElementDimensionToDisplay(selectedProgramStageToDisplay.programStageDataElements.map(stage => stage.dataElement).find(dataElement => dataElement.id === selected))}
+            onChange={({ selected }) => setSelectedDataElementDimensionToDisplay((selectedProgramStageToDisplay.programStageDataElements || []).map(stage => stage.dataElement).find(dataElement => dataElement.id === selected))}
           >
-            {selectedProgramStageToDisplay.programStageDataElements.map(stage => <SingleSelectOption key={stage.dataElement.id} value={stage.dataElement?.id} label={stage.dataElement?.name} />)}
+            {(selectedProgramStageToDisplay.programStageDataElements || []).map(stage => <SingleSelectOption key={stage.dataElement.id} value={stage.dataElement?.id} label={stage.dataElement?.name} />)}
           </SingleSelect>
         </Field>
       </div>
@@ -911,6 +1002,7 @@ const DesignsPage = ({
     </ModalTitle>
     <ModalContent>
       <div className='border rounded p-3'>
+
         <div >
           <Field label="Select organisation unit level to display">
             <SingleSelect placeholder="Organisation Unit" selected={selectedOuLevelToDisplay} onChange={({ selected }) => setSelectedOuLevelToDisplay(selected)} >
@@ -936,6 +1028,42 @@ const DesignsPage = ({
             </div>
           )
         }
+
+        {/* Comparison Toggle - SIMPLIFIED */}
+        <div className='mt-2'>
+          <Checkbox
+            label="Compare with another indicator"
+            checked={enableComparison}
+            onChange={({ checked }) => {
+              setEnableComparison(checked)
+              if (!checked) {
+                setComparisonIndicator(null)
+                setPrimaryPeriodOffset('0')
+                setComparisonPeriodOffset('-1')
+                setComparisonOperator('DIFFERENCE')
+              }
+            }}
+          />
+        </div>
+
+        {/* Comparison Configuration - Open dedicated modal */}
+        {enableComparison && (
+          <div className='mt-2'>
+            <Button onClick={() => setVisibleComparisonModal(true)}>
+              Configure Comparison Settings
+            </Button>
+            {comparisonIndicator && (
+              <div style={{ marginTop: '8px', padding: '8px', backgroundColor: '#e3f2fd', borderRadius: '4px' }}>
+                <strong>Comparing:</strong> {currentDimensionSelected?.name} vs {comparisonIndicator.name}
+                {comparisonMode === 'CONDITIONAL' && (
+                  <span style={{ marginLeft: '8px', color: '#ff9800', fontWeight: 'bold' }}>
+                    (Conditional - {comparisonConditions.length} branches)
+                  </span>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         <div className='mt-2'>
           <Field label="Display Way">
@@ -997,11 +1125,10 @@ const DesignsPage = ({
           close
         </Button>
         <Button primary disabled={
-          selectedOuLevelToDisplay &&
-            selectedRadioTypeLegend ?
-            selectedRadioTypeLegend === "VALUE" ? false :
-              selectedTypeLegendToDisplay ? false : true
-            : true
+          !selectedOuLevelToDisplay ||
+          !selectedRadioTypeLegend ||
+          (selectedRadioTypeLegend === "LEGEND" && !selectedTypeLegendToDisplay) ||
+          (enableComparison && !comparisonIndicator)
         }
           loading={loadingProcess ? true : false}
           onClick={() => handleInjectAggregateIds()}
@@ -1012,6 +1139,59 @@ const DesignsPage = ({
     </ModalActions>
   </Modal> : <></>
 
+  const RenderComparisonDimensionModal = () => visibleComparisonModal ? (
+    <ComparisonDimensionModal
+      isOpen={visibleComparisonModal}
+      onClose={() => setVisibleComparisonModal(false)}
+      legends={legends}
+      organisationUnitLevels={organisationUnitLevels}
+      prefillPrimaryIndicator={currentDimensionSelected}
+      availableDimensions={selectedConfigDimensionsAggregate}
+      existingMode={comparisonMode}
+      existingComparisonIndicator={comparisonIndicator}
+      existingPrimaryOffset={primaryPeriodOffset}
+      existingComparisonOffset={comparisonPeriodOffset}
+      existingOperator={comparisonOperator}
+      existingDisplayFormat={selectedRadioTypeLegend === 'LEGEND' ? 'LEGEND' : 'RAW'}
+      existingLegend={legendToUse}
+      existingLegendType={selectedTypeLegendToDisplay}
+      existingConditions={comparisonConditions}
+      existingOrgUnitLevel={selectedOuLevelToDisplay}
+      onInsert={(config) => {
+        // Store mode and indicators
+        setComparisonMode(config.mode)
+        setComparisonIndicator(config.comparisonIndicator)
+        setPrimaryPeriodOffset(config.primaryPeriodOffset.toString())
+        setComparisonPeriodOffset(config.comparisonPeriodOffset.toString())
+
+        if (config.mode === 'SIMPLE') {
+          // SIMPLE mode: store operator and legend
+          setComparisonOperator(config.operator)
+
+          // Handle legend config
+          if (config.displayFormat === 'LEGEND' && config.legend) {
+            setSelectedRadioTypeLegend('LEGEND')
+            setLegendToUse(config.legend.id)
+            setSelectedTypeLegendToDisplay(config.legend.type)
+          } else {
+            setSelectedRadioTypeLegend('VALUE')
+          }
+        } else {
+          // CONDITIONAL mode: store conditions array
+          setComparisonConditions(config.conditions)
+          // CONDITIONAL mode also has a single legend (shared by all branches)
+          if (config.legend) {
+            setLegendToUse(config.legend.id)
+            setSelectedTypeLegendToDisplay(config.legend.type)
+            setSelectedRadioTypeLegend('LEGEND')
+          }
+        }
+
+        setSelectedOuLevelToDisplay(config.orgUnitLevel)
+        setVisibleComparisonModal(false)
+      }}
+    />
+  ) : <></>
 
   const SelectDXTitleModal = () => visibleSelectDXTitle ? <Modal onClose={() => handleCloseSelectDXTitleModal()} small>
     <ModalTitle>
@@ -1587,6 +1767,7 @@ const DesignsPage = ({
         {SelectDXTitleModal()}
         {SelectDXTrackerModal()}
         {SelectDXAggregateModal()}
+        {RenderComparisonDimensionModal()}
         {ConfigurationModal()}
       </div>
     </>

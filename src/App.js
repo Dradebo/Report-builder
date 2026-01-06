@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react'
 import DesignsPage from './Components/DesignsPage'
 import ReportsPage from './Components/ReportsPage'
-import { ANALYTICS_ROUTE, ME_ROUTE, TEIS_ROUTE, ORGANISATION_UNIT_GROUP_ROUTE, USER_GROUPS_ROUTE } from './api.routes'
+import { ANALYTICS_ROUTE, ME_ROUTE, TEIS_ROUTE, ORGANISATION_UNIT_GROUP_ROUTE, USER_GROUPS_ROUTE, INDICATORS_METADATA_ROUTE } from './api.routes'
 import { Button, CircularLoader }
     from '@dhis2/ui'
 import Filter from './Components/Filter'
 import { NOTIFICATON_CRITICAL, PAGE_DESIGN, PAGE_LEGEND, PAGE_REPORT, PAGE_SMS_CONFIG, YEAR } from './utils/constants'
 
-import { cleanAggrateDimensionData, formatPeriodForAnalytic, getAggregateDimensionsList, getOrgUnitParentFromHtml, injectDataIntoHtml, inject_tei_into_html, loadDataStore, updateAndInjectOtherElementPeriod, updateAndInjectSchoolNames } from './utils/fonctions'
+import { cleanAggrateDimensionData, formatPeriodForAnalytic, getAggregateDimensionsList, getOrgUnitParentFromHtml, injectDataIntoHtml, inject_tei_into_html, loadDataStore, updateAndInjectOtherElementPeriod, updateAndInjectSchoolNames, extractPeriodOffsets, buildPeriodRangeForOffset, calculateEffectivePeriod, getComparisonDimensionsListWithOffsets, calculateOffsetPeriod } from './utils/fonctions'
 import LegendPage from './Components/LegendPage'
 import { NextUIProvider, Modal, Table } from '@nextui-org/react';
 import SmsConfigPage from './Components/SmsConfigPage'
@@ -19,7 +19,7 @@ import { BiMessageDetail } from 'react-icons/bi'
 import axios from 'axios'
 import 'antd/dist/reset.css'
 import './App.css'
-
+console.log(ANALYTICS_ROUTE,"Afudee >>>>>")
 const App = () => {
     const [notif, setNotif] = useState({ show: false, message: null, type: null })
 
@@ -118,67 +118,331 @@ const App = () => {
     const loadLegendContents = async (legendList) => {
         try {
             setLoadingLegendContents(true)
-            let list = []
-            legendList.forEach(async leg => {
-                const content = await loadDataStore(`LEGEND_${leg.id}`, null, null, {})
 
-                list = [...list, content]
-                setLegendContents(list)
-                if (legendList.length === list.length) {
-                    setLoadingLegendContents(false)
-                }
-            })
-            legendList.length === 0 && setLoadingLegendContents(false)
+            if (legendList.length === 0) {
+                setLoadingLegendContents(false)
+                return
+            }
+
+            console.log(`[Report Builder] Loading ${legendList.length} legend contents`)
+
+            // Use Promise.all to wait for all legends to load
+            const legendPromises = legendList.map(leg =>
+                loadDataStore(`LEGEND_${leg.id}`, null, null, {})
+            )
+
+            const loadedLegends = await Promise.all(legendPromises)
+
+            console.log(`[Report Builder] Loaded ${loadedLegends.length} legend contents`)
+            setLegendContents(loadedLegends)
+            setLoadingLegendContents(false)
 
         } catch (err) {
+            console.error('[Report Builder] Error loading legend contents:', err)
             setLoadingLegendContents(false)
             throw err
         }
     }
 
     const handleUpdateInformation = async () => {
+        console.log('[Report Builder] ========== handleUpdateInformation START ==========')
+        console.log('[Report Builder] selectedReportContent:', selectedReportContent)
+        console.log('[Report Builder] selectedPeriod:', selectedPeriod)
+        console.log('[Report Builder] selectedPeriodType:', selectedPeriodType)
+        console.log('[Report Builder] currentOrgUnits:', currentOrgUnits)
+
         try {
             setLoadingGetDatas(true)
             setNotif({ show: false, message: null, type: null })
+
+            console.log('[Report Builder] Getting org unit parents...')
             const corresponding_parents = getOrgUnitParentFromHtml(
                 currentOrgUnits[0].id,
                 orgUnits,
                 orgUnitLevels
             )
+            console.log('[Report Builder] Org unit parents:', corresponding_parents)
 
+            console.log('[Report Builder] Extracting aggregate dimensions...')
             const dimensionList = getAggregateDimensionsList(selectedReportContent)
-            cleanAggrateDimensionData(selectedReportContent, dimensionList, selectedPeriod, selectedPeriodType, currentOrgUnits[0]?.id, orgUnits, orgUnitLevels, legendContents, organisationUnitGroups)
+            console.log('[Report Builder] Aggregate dimensions:', dimensionList)
 
-            if (dimensionList.length > 0) {
-                for (let dim of dimensionList) {
+            console.log('[Report Builder] Extracting comparison dimensions...')
+            const comparisonDimensions = getComparisonDimensionsListWithOffsets(selectedReportContent?.html || selectedReportContent)
+            console.log(`[Report Builder] Found ${comparisonDimensions.length} comparison dimension references:`, comparisonDimensions)
+
+            // Store indicator metadata for passing to legend functions
+            let indicatorMetadata = {}
+
+            // Accumulate all data values from all dimensions before injecting
+            let allDataValues = []
+
+            // Build dimension-period map for fetching
+            const dimensionPeriodMap = new Map()
+
+            if (dimensionList.length > 0 || comparisonDimensions.length > 0) {
+                console.log(`[Report Builder] Fetching ${dimensionList.length} dimensions:`, dimensionList)
+
+                // Step 1: Identify indicators and fetch their metadata to detect period offsets
+                const indicators = dimensionList.filter(dim => !dim.includes('.')) // Indicators don't have dots (data elements have dots for COCs)
+                console.log(`[Report Builder] Dimension list:`, dimensionList)
+                console.log(`[Report Builder] Identified ${indicators.length} indicators:`, indicators)
+
+                if (indicators.length > 0) {
                     try {
+                        const metadataRoute = `${INDICATORS_METADATA_ROUTE}&filter=id:in:[${indicators.join(',')}]`
+                        console.log(`[Report Builder] Fetching indicator metadata from: ${metadataRoute}`)
+
+                        const metadataRequest = await fetch(metadataRoute)
+
+                        // Check if response is ok
+                        if (!metadataRequest.ok) {
+                            throw new Error(`HTTP ${metadataRequest.status}: ${metadataRequest.statusText}`)
+                        }
+
+                        const metadataResponse = await metadataRequest.json()
+
+                        // Check for DHIS2 API error response
+                        if (metadataResponse.status === "ERROR") {
+                            console.error('[Report Builder] DHIS2 API Error:', metadataResponse)
+                            throw new Error(metadataResponse.message || 'DHIS2 API returned error status')
+                        }
+
+                        const offsetSummary = {
+                            total: 0,
+                            withOffsets: [],
+                            withoutOffsets: 0
+                        }
+
+                        if (metadataResponse.indicators && metadataResponse.indicators.length > 0) {
+                            offsetSummary.total = metadataResponse.indicators.length
+
+                            metadataResponse.indicators.forEach(indicator => {
+                                const numeratorOffsets = extractPeriodOffsets(indicator.numerator)
+                                const denominatorOffsets = extractPeriodOffsets(indicator.denominator)
+                                const allOffsets = [...new Set([...numeratorOffsets, ...denominatorOffsets])]
+
+                                if (allOffsets.length > 0) {
+                                    indicatorMetadata[indicator.id] = {
+                                        offsets: allOffsets,
+                                        name: indicator.name
+                                    }
+                                    offsetSummary.withOffsets.push({
+                                        name: indicator.name,
+                                        id: indicator.id,
+                                        offsets: allOffsets
+                                    })
+                                } else {
+                                    offsetSummary.withoutOffsets++
+                                }
+                            })
+                        }
+
+                        // Print summary
+                        console.log(`\n${'='.repeat(80)}`)
+                        console.log(`INDICATOR OFFSET DETECTION SUMMARY`)
+                        console.log(`${'='.repeat(80)}`)
+                        console.log(`Total indicators analyzed: ${offsetSummary.total}`)
+                        console.log(`Indicators WITH period offsets: ${offsetSummary.withOffsets.length}`)
+                        console.log(`Indicators WITHOUT period offsets: ${offsetSummary.withoutOffsets}`)
+
+                        if (offsetSummary.withOffsets.length > 0) {
+                            console.log(`\nIndicators with Period Offsets:`)
+                            console.table(offsetSummary.withOffsets.map(ind => ({
+                                'Indicator Name': ind.name,
+                                'ID': ind.id,
+                                'Offsets': JSON.stringify(ind.offsets)
+                            })))
+                        }
+                        console.log(`${'='.repeat(80)}\n`)
+                    } catch (err) {
+                        console.error('[Report Builder] ✗ Failed to fetch indicator metadata:', err)
+                        console.error('[Report Builder] Error details:', {
+                            message: err.message,
+                            stack: err.stack,
+                            route: `${INDICATORS_METADATA_ROUTE}&filter=id:in:[${indicators.join(',')}]`,
+                            indicatorCount: indicators.length,
+                            indicators: indicators
+                        })
+                        console.warn('[Report Builder] ⚠ Proceeding without offset handling for indicators')
+
+                        // Show user notification about indicator fetch failure
+                        setNotif({
+                            show: true,
+                            message: `Failed to fetch indicator metadata: ${err.message}. Report may be incomplete.`,
+                            type: NOTIFICATON_WARNING
+                        })
+                    }
+                } else {
+                    console.log(`[Report Builder] No indicators found in dimension list, skipping metadata fetch`)
+                }
+
+                // Step 2: Build dimension-period map
+                console.log(`\n[Report Builder] Building dimension-period map...`)
+
+                // Add standard dimensions to the map
+                dimensionList.forEach(dim => {
+                    if (!dimensionPeriodMap.has(dim)) {
+                        dimensionPeriodMap.set(dim, new Set())
+                    }
+
+                    if (indicatorMetadata[dim]) {
+                        // Legacy offset indicator - build period range
+                        const periodString = buildPeriodRangeForOffset(
+                            selectedPeriod,
+                            selectedPeriodType,
+                            indicatorMetadata[dim].offsets
+                        )
+                        periodString.split(';').forEach(p => dimensionPeriodMap.get(dim).add(p))
+                    } else {
+                        // Normal dimension - single period
+                        const period = formatPeriodForAnalytic(selectedPeriod, selectedPeriodType)
+                        dimensionPeriodMap.get(dim).add(period)
+                    }
+                })
+
+                // Add comparison dimensions to the map
+                comparisonDimensions.forEach(({ id, offset }) => {
+                    if (!dimensionPeriodMap.has(id)) {
+                        dimensionPeriodMap.set(id, new Set())
+                    }
+                    const offsetPeriod = calculateOffsetPeriod(selectedPeriod, selectedPeriodType, offset)
+                    dimensionPeriodMap.get(id).add(offsetPeriod)
+                })
+
+                console.log(`[Report Builder] Dimension-period map built for ${dimensionPeriodMap.size} unique dimensions`)
+
+                // Step 3: Fetch data for all dimension-period combinations in parallel
+                console.log(`\n[Report Builder] Starting data fetch...`)
+
+                const fetchSummary = {
+                    dimensions: [],
+                    totalValues: 0
+                }
+
+                const fetchPromises = Array.from(dimensionPeriodMap.entries()).map(async ([dim, periodsSet]) => {
+                    try {
+                        const periodString = Array.from(periodsSet).join(';')
+                        const hasOffset = indicatorMetadata[dim] !== undefined
+                        const isComparison = comparisonDimensions.some(cd => cd.id === dim)
+
+                        console.log(`[Report Builder] Fetching ${dim}: periods [${periodString}]${hasOffset ? ' (legacy offset)' : ''}${isComparison ? ' (comparison)' : ''}`)
+
                         const route = ANALYTICS_ROUTE
                             .concat("?dimension=ou:")
                             .concat(corresponding_parents?.join(';'))
                             .concat("&dimension=dx:")
                             .concat(dim)
                             .concat("&dimension=pe:")
-                            .concat(formatPeriodForAnalytic(selectedPeriod, selectedPeriodType))
+                            .concat(periodString)
 
                         const request = await fetch(route)
                         const response = await request.json()
 
-                        if (response.status === "ERROR")
+                        if (response.status === "ERROR") {
+                            console.error(`[Report Builder] Error for ${dim}:`, response)
                             throw response
+                        }
 
+                        // Track result for summary
+                        const valueCount = response.dataValues ? response.dataValues.length : 0
+                        fetchSummary.dimensions.push({
+                            id: dim,
+                            name: indicatorMetadata[dim]?.name || dim,
+                            hasOffset,
+                            isComparison,
+                            periodString,
+                            valueCount
+                        })
 
-                        setDataValues(response.dataValues)
-                        injectDataIntoHtml(response.dataValues, selectedReportContent, orgUnits, orgUnitLevels, currentOrgUnits[0].id, selectedPeriod, selectedPeriodType, setNotif, legendContents)
+                        return response.dataValues || []
 
                     } catch (err) {
+                        console.error(`[Report Builder] ✗ Failed to fetch dimension ${dim}:`, err)
+                        return []
                     }
+                })
+
+                // Wait for all fetches to complete and flatten results
+                const fetchResults = await Promise.all(fetchPromises)
+                allDataValues = fetchResults.flat()
+
+                // Calculate total values
+                fetchSummary.totalValues = allDataValues.length
+
+                // Print data fetch summary
+                console.log(`\n${'='.repeat(80)}`)
+                console.log(`DATA FETCH SUMMARY`)
+                console.log(`${'='.repeat(80)}`)
+                console.log(`Total dimensions processed: ${fetchSummary.dimensions.length}`)
+                console.log(`Total data values received: ${fetchSummary.totalValues}`)
+
+                const withOffsets = fetchSummary.dimensions.filter(d => d.hasOffset)
+                const comparisonDims = fetchSummary.dimensions.filter(d => d.isComparison && !d.hasOffset)
+                const standardDims = fetchSummary.dimensions.filter(d => !d.hasOffset && !d.isComparison)
+
+                if (withOffsets.length > 0) {
+                    console.log(`\nLegacy Offset Indicators (${withOffsets.length}):`)
+                    console.table(withOffsets.map(d => ({
+                        'Dimension': d.name,
+                        'ID': d.id,
+                        'Period String': d.periodString,
+                        'Values': d.valueCount
+                    })))
                 }
+
+                if (comparisonDims.length > 0) {
+                    console.log(`\nComparison Dimensions (${comparisonDims.length}):`)
+                    console.table(comparisonDims.map(d => ({
+                        'Dimension': d.name,
+                        'ID': d.id,
+                        'Period String': d.periodString,
+                        'Values': d.valueCount
+                    })))
+                }
+
+                if (standardDims.length > 0) {
+                    console.log(`\nStandard Dimensions (${standardDims.length}):`)
+                    const standardSummary = {}
+                    standardDims.forEach(d => {
+                        standardSummary[d.id] = d.valueCount
+                    })
+                    console.log(standardSummary)
+                }
+                console.log(`${'='.repeat(80)}\n`)
+
+                // Now that we have indicator metadata, clean the dimension data with proper period context
+                cleanAggrateDimensionData(selectedReportContent, dimensionList, selectedPeriod, selectedPeriodType, currentOrgUnits[0]?.id, orgUnits, orgUnitLevels, legendContents, organisationUnitGroups, indicatorMetadata)
+
+                // Set state once with all accumulated data
+                setDataValues(allDataValues)
+
+                // Inject all data at once with complete dataset and indicator metadata
+                if (allDataValues.length > 0) {
+                    injectDataIntoHtml(allDataValues, selectedReportContent, orgUnits, orgUnitLevels, currentOrgUnits[0].id, selectedPeriod, selectedPeriodType, setNotif, legendContents, indicatorMetadata)
+                } else {
+                    console.warn('[Report Builder] No data values to inject')
+                }
+            } else {
+                // No dimensions, but still need to clean
+                cleanAggrateDimensionData(selectedReportContent, dimensionList, selectedPeriod, selectedPeriodType, currentOrgUnits[0]?.id, orgUnits, orgUnitLevels, legendContents, organisationUnitGroups, {})
             }
 
             handleUpdateOtherElement()
             setLoadingGetDatas(false)
         } catch (err) {
+            console.error('[Report Builder] ========== ERROR in handleUpdateInformation ==========')
+            console.error('[Report Builder] Error message:', err.message)
+            console.error('[Report Builder] Error stack:', err.stack)
+            console.error('[Report Builder] Full error object:', err)
             setLoadingGetDatas(false)
+            setNotif({
+                show: true,
+                message: `Report generation failed: ${err.message}`,
+                type: NOTIFICATON_CRITICAL
+            })
+        } finally {
+            console.log('[Report Builder] ========== handleUpdateInformation END ==========')
         }
     }
 
@@ -500,7 +764,7 @@ const App = () => {
             <Modal.Body>
                 <div >
                     {teis.length === 0 && <div> NO DATA </div>}
-                    {teis.length > 0 && <Table
+                    {teis.length > 0 && selectedProgramTrackerFromHTML?.programTrackedEntityAttributes?.length > 0 && <Table
                         aria-label="Example table with static content"
                         css={{
                             height: "auto",
@@ -510,7 +774,7 @@ const App = () => {
                         sticked
                     >
                         <Table.Header>
-                            {selectedProgramTrackerFromHTML?.programTrackedEntityAttributes?.map(att => (
+                            {(selectedProgramTrackerFromHTML?.programTrackedEntityAttributes || []).map(att => (
                                 <Table.Column key={att.id}>{att?.trackedEntityAttribute?.name}</Table.Column>
                             ))}
                             <Table.Column>Actions</Table.Column>
@@ -518,7 +782,7 @@ const App = () => {
                         <Table.Body>
                             {teis.map((tei, index) => (
                                 <Table.Row key={index}>
-                                    {selectedProgramTrackerFromHTML?.programTrackedEntityAttributes?.map(programTrackedEntityAttribute => (
+                                    {(selectedProgramTrackerFromHTML?.programTrackedEntityAttributes || []).map(programTrackedEntityAttribute => (
                                         <Table.Cell key={programTrackedEntityAttribute.trackedEntityAttribute.id}>
                                             {tei.attributes.find(attribute => attribute.attribute === programTrackedEntityAttribute.trackedEntityAttribute.id)?.value}
                                         </Table.Cell>

@@ -46,7 +46,7 @@ const DimensionsDialog = ({
             if (response.status === "ERROR")
                 throw response
 
-            const programs = response.programs.map(p => ({ ...p, programTrackedEntityAttributes: p.programTrackedEntityAttributes.map(at => ({ ...at, programType: p.programType, program: p.id })) }))
+            const programs = response.programs.map(p => ({ ...p, programTrackedEntityAttributes: (p.programTrackedEntityAttributes || []).map(at => ({ ...at, programType: p.programType, program: p.id })) }))
             setLoadingPrograms(false)
             setPrograms(programs)
         } catch (err) {

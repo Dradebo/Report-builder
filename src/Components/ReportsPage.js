@@ -63,7 +63,7 @@ const ReportsPage = ({
 
 
     const handleSearchInput = (value, index) => {
-        const newProperties = searchProperties.map((el, i) => {
+        const newProperties = (searchProperties || []).map((el, i) => {
             if (i === index) {
                 return { ...el, value: value }
             } else {
@@ -164,7 +164,7 @@ const ReportsPage = ({
                     smsConfigs?.length > 0 ? (
                         <Field label="SMS Template ">
                             <SingleSelect placeholder="Select template " selected={selectedTemplate?.id} onChange={({ selected }) => setSelectedTemplate(smsConfigs?.find(conf => conf.id === selected))} >
-                                {smsConfigs.map(template => (<SingleSelectOption key={template.id} value={template.id} label={template.name} />))}
+                                {(smsConfigs || []).map(template => (<SingleSelectOption key={template.id} value={template.id} label={template.name} />))}
                             </SingleSelect>
                         </Field>
 
@@ -238,7 +238,7 @@ const ReportsPage = ({
                     selectedReport && searchProperties && searchByAttribute && (
                         <div className='d-flex align-items-center justify-content-center mt-2'>
                             <div>Search by properties : </div>
-                            {searchProperties.map((p, index) => (
+                            {(searchProperties || []).map((p, index) => (
                                 <Input className="ml-2" placeholder={p.trackedEntityAttribute?.name} value={p.value} onChange={({ value }) => handleSearchInput(value, index)} />
                             ))}
                             <Button className="ml-2" loading={loadingTeiProcess} disabled={currentOrgUnits.length > 0 ? false : true} onClick={() => queryTeiList()}>Search</Button>

@@ -1,0 +1,30 @@
+{
+    "keep": {
+        "days": true,
+        "amount": 14
+    },
+    "auditLog": "/Users/sean/Documents/GitHub/Report-builder/logs/.842815cea25ee4073f3a1646d1c8daa870f09394-audit.json",
+    "files": [
+        {
+            "date": 1767429304646,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-03.log",
+            "hash": "b20922c5dca013d49cbc3c33264976bd626a05814c73e00ddf5610a605c7f90a"
+        },
+        {
+            "date": 1767490021226,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-04.log",
+            "hash": "f0c309b188f61bb3b34c17782785ca7f0420b2edad4505d58442625407c27e03"
+        },
+        {
+            "date": 1767567666552,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-05.log",
+            "hash": "e04a3a9187ff962c16e8aa77c121d25dc6c98a1246807141439eb574cf3b3bd4"
+        },
+        {
+            "date": 1767673956226,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-06.log",
+            "hash": "f1b86f83933fc40ac1f8ce04cd375c63dda989bd5a33398a01bf381ab7be23c8"
+        }
+    ],
+    "hashType": "sha256"
+}

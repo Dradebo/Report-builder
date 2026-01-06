@@ -2,8 +2,14 @@
 
 import axios from "axios"
 import dayjs from "dayjs"
+import quarterOfYear from 'dayjs/plugin/quarterOfYear'
+import weekOfYear from 'dayjs/plugin/weekOfYear'
 import { TRACKER_ENTITY_INSTANCES_ROUTE, DATA_STORE_ROUTE } from "../api.routes"
-import { ATTRIBUTE, COLOR, CURRENT, DATA_ELEMENT, DATE, DAY, ENROLLMENT, ENROLLMENT_DATE, IMAGE, INCIDENT_DATE, LABEL, MONTH, NOTIFICATON_WARNING, ORGANISATION_UNIT_NAME, OTHER_ELEMENT, SELECTED_DATE, TRACKER, YEAR } from "./constants"
+import { ATTRIBUTE, COLOR, CURRENT, DATA_ELEMENT, DATE, DAY, ENROLLMENT, ENROLLMENT_DATE, IMAGE, INCIDENT_DATE, LABEL, MONTH, NOTIFICATON_WARNING, ORGANISATION_UNIT_NAME, OTHER_ELEMENT, QUARTERLY, SELECTED_DATE, TRACKER, WEEK, WEEKLY, YEAR } from "./constants"
+
+// Extend dayjs with plugins
+dayjs.extend(quarterOfYear)
+dayjs.extend(weekOfYear)
 
 const drawCamember = async (legendTypeId, attribute_code, value, period, setNotif, periodType, legendContentList) => {
 
@@ -431,25 +437,41 @@ export const inject_tei_into_html = (report, current_tei, selectedProgramTracker
   }
 }
 
-export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selectedOrgUnit, period, periodType, setNotif, legendContentList) => {
+export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selectedOrgUnit, period, periodType, setNotif, legendContentList, indicatorMetadata = {}) => {
   if (selectedOrgUnit) {
     let my_container = document.querySelector('[id="my-table-container"]')
 
-
+    // Track matched and unmatched data for debugging
+    const matchedDataValues = new Set()
     const html_elements_list = my_container.querySelectorAll('[data-type="AGGREGATE"]')
 
     for (let html_el of html_elements_list) {
       const html_ID = html_el.getAttribute('id')
       const data_has_legend = html_el.getAttribute('data-has-legend')
 
-      // If no legend 
+      // If no legend
       if (data_has_legend === 'NO' && html_ID) {
 
         const dx_id = html_ID.split('|')?.[0]
         const ou_id = html_ID.split('|')?.[1]
 
         if (dx_id && ou_id) {
-          for (let dataValue of dataValues) {
+          // Filter data values by period if this indicator has offsets
+          let relevantDataValues = dataValues
+
+          if (indicatorMetadata[dx_id]) {
+            const userSelectedPeriodFormatted = formatPeriodForAnalytic(period, periodType)
+            relevantDataValues = dataValues.filter(dv => {
+              const dataElement = dv.dataElement
+              const el = dv.categoryOptionCombo ? dataElement + "." + dv.categoryOptionCombo : dataElement
+              if (el === dx_id) {
+                return dv.period === userSelectedPeriodFormatted
+              }
+              return true
+            })
+          }
+
+          for (let dataValue of relevantDataValues) {
             const dataElement = dataValue.dataElement
             const orgUnit = dataValue.orgUnit
             const value = dataValue.value
@@ -465,6 +487,9 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
 
               injectFromId(html_ID, value)
 
+              // Track this data value as matched
+              matchedDataValues.add(`${el}|${orgUnit}`)
+
             }
           }
         }
@@ -478,7 +503,34 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
         const legend_type = html_ID.split('|')?.[3]
 
         if (dx_id && ou_id && legend_id && legend_type) {
-          for (let dataValue of dataValues) {
+          // Filter data values by period if this indicator has offsets
+          let relevantDataValues = dataValues
+
+          if (indicatorMetadata[dx_id]) {
+            // This indicator has period offsets - we need to filter to only the user-selected period
+            // The Analytics API returned data for MULTIPLE periods (e.g., Dec 2023 + Jan 2024)
+            // But we only want to display the data for the user-selected period (e.g., Jan 2024)
+            const userSelectedPeriodFormatted = formatPeriodForAnalytic(period, periodType)
+
+            relevantDataValues = dataValues.filter(dv => {
+              const dataElement = dv.dataElement
+              const el = dv.categoryOptionCombo ? dataElement + "." + dv.categoryOptionCombo : dataElement
+
+              // Only filter if this is the dimension we're currently processing
+              if (el === dx_id) {
+                const matches = dv.period === userSelectedPeriodFormatted
+                if (!matches) {
+                  console.log(`[Report Builder] Filtering out ${el} data from period ${dv.period} (want ${userSelectedPeriodFormatted})`)
+                }
+                return matches
+              }
+              return true // Keep other dimensions as-is
+            })
+
+            console.log(`[Report Builder] Indicator ${dx_id} with offsets: filtered ${dataValues.length} -> ${relevantDataValues.length} data values`)
+          }
+
+          for (let dataValue of relevantDataValues) {
 
             const dataElement = dataValue.dataElement
             const orgUnit = dataValue.orgUnit
@@ -490,26 +542,40 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
               orgUnit === getOrgUnitIdFromParentString(ou_id, selectedOrgUnit, orgUnits, levels)?.id
             ) {
 
+              // Calculate effective period for legend matching
+              // If this is an indicator with offset, use the offset period for legend selection
+              let effectivePeriod = period
+              if (indicatorMetadata[dx_id]) {
+                // Use the most negative offset (earliest period) for legend matching
+                // This matches the actual calculation period for the indicator
+                const minOffset = Math.min(...indicatorMetadata[dx_id].offsets)
+                effectivePeriod = calculateEffectivePeriod(period, periodType, minOffset)
+                console.log(`[Report Builder] ${dx_id}: Using data from ${formatPeriodForAnalytic(period, periodType)} with legend from ${formatPeriodForAnalytic(effectivePeriod, periodType)} (offset: ${minOffset})`)
+              }
+
               switch (legend_type) {
                 case "color":
-                  checkColorLegend(legend_id, html_ID, value, period, setNotif, periodType, legendContentList)
+                  checkColorLegend(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
                   break
 
                 case "label":
-                  checkLabelLegend(legend_id, html_ID, value, period, setNotif, periodType, legendContentList)
+                  checkLabelLegend(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
                   break
 
                 case "image":
-                  checkImageLegend(legend_id, html_ID, value, period, setNotif, periodType, legendContentList)
+                  checkImageLegend(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
                   break
 
                 case "pie":
-                  drawCamember(legend_id, html_ID, value, period, setNotif, periodType, legendContentList)
+                  drawCamember(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
                   break
 
                 default:
                   break
               }
+
+              // Track this data value as matched
+              matchedDataValues.add(`${el}|${orgUnit}`)
 
             }
           }
@@ -520,12 +586,232 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
       }
 
     }
+
+    // Process comparison elements
+    const comparison_elements_list = my_container.querySelectorAll('[data-type="AGGREGATE_COMPARISON"]')
+    console.log(`[Report Builder] Processing ${comparison_elements_list.length} comparison elements`)
+
+    for (let compEl of comparison_elements_list) {
+      const html_ID = compEl.getAttribute('id')
+      const primaryId = compEl.getAttribute('data-primary-id')
+      const primaryOffset = parseInt(compEl.getAttribute('data-primary-offset') || '0')
+      const comparisonId = compEl.getAttribute('data-comparison-id')
+      const comparisonOffset = parseInt(compEl.getAttribute('data-comparison-offset') || '0')
+      const comparisonMode = compEl.getAttribute('data-comparison-mode') || 'SIMPLE'
+      const ouLevel = compEl.getAttribute('data-ou-level')
+
+      if (!primaryId || !comparisonId) continue
+
+      // Resolve org unit
+      const resolvedOrgUnit = getOrgUnitIdFromParentString(
+        ouLevel,
+        selectedOrgUnit,
+        orgUnits,
+        levels
+      )
+
+      if (!resolvedOrgUnit) continue
+
+      // Calculate effective periods for both indicators
+      const primaryPeriod = calculateOffsetPeriod(period, periodType, primaryOffset)
+      const comparisonPeriod = calculateOffsetPeriod(period, periodType, comparisonOffset)
+
+      // Find data values for both indicators at their respective periods
+      const primaryData = dataValues.find(dv => {
+        const el = dv.categoryOptionCombo ? `${dv.dataElement}.${dv.categoryOptionCombo}` : dv.dataElement
+        return el === primaryId && dv.orgUnit === resolvedOrgUnit.id && dv.period === primaryPeriod
+      })
+
+      const comparisonData = dataValues.find(dv => {
+        const el = dv.categoryOptionCombo ? `${dv.dataElement}.${dv.categoryOptionCombo}` : dv.dataElement
+        return el === comparisonId && dv.orgUnit === resolvedOrgUnit.id && dv.period === comparisonPeriod
+      })
+
+      console.log(`[Report Builder] Comparison ${primaryId} (${primaryPeriod}) vs ${comparisonId} (${comparisonPeriod}):`, {
+        primaryValue: primaryData?.value,
+        comparisonValue: comparisonData?.value,
+        mode: comparisonMode
+      })
+
+      // Track matched data
+      if (primaryData) {
+        const primaryEl = primaryData.categoryOptionCombo ? `${primaryData.dataElement}.${primaryData.categoryOptionCombo}` : primaryData.dataElement
+        matchedDataValues.add(`${primaryEl}|${primaryData.orgUnit}`)
+      }
+      if (comparisonData) {
+        const comparisonEl = comparisonData.categoryOptionCombo ? `${comparisonData.dataElement}.${comparisonData.categoryOptionCombo}` : comparisonData.dataElement
+        matchedDataValues.add(`${comparisonEl}|${comparisonData.orgUnit}`)
+      }
+
+      // Process based on comparison mode
+      if (comparisonMode === 'CONDITIONAL') {
+        // CONDITIONAL mode: evaluate conditions and apply matched legend
+        const conditionsJson = compEl.getAttribute('data-conditions')
+        if (!conditionsJson) {
+          console.warn('[Report Builder] CONDITIONAL mode but no conditions data attribute found')
+          compEl.innerHTML = 'N/A'
+          continue
+        }
+
+        let conditions
+        try {
+          // Decode HTML entities that jQuery attr() automatically encodes
+          const decoded = conditionsJson
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&')  // Must be last to avoid double-decoding
+
+          conditions = JSON.parse(decoded)
+        } catch (error) {
+          console.error('[Report Builder] Failed to parse conditions JSON:', error)
+          console.error('[Report Builder] Raw conditionsJson:', conditionsJson)
+          console.error('[Report Builder] Decoded value:', decoded)
+          compEl.innerHTML = 'N/A'
+          continue
+        }
+
+        // Evaluate conditional comparison
+        const { compareIndicators, evaluateConditionalComparison } = require('./comparisonFunctions')
+        const mappedValue = evaluateConditionalComparison(
+          primaryData?.value,
+          comparisonData?.value,
+          conditions
+        )
+
+        if (mappedValue === null) {
+          compEl.innerHTML = 'N/A'
+          continue
+        }
+
+        // Get shared legend for all condition branches
+        const legendId = compEl.getAttribute('data-legend-id')
+        const legendType = compEl.getAttribute('data-legend-type')
+
+        if (legendId && legendType) {
+          // Apply shared legend with mapped value
+          console.log(`[Report Builder] Applying conditional legend: ${legendId} (type: ${legendType}, value: ${mappedValue})`)
+
+          switch (legendType) {
+            case "color":
+              checkColorLegend(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              break
+
+            case "label":
+              checkLabelLegend(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              break
+
+            case "image":
+              checkImageLegend(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              break
+
+            case "pie":
+              drawCamember(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              break
+
+            default:
+              compEl.innerHTML = mappedValue.toFixed(2)
+              break
+          }
+        } else {
+          // No legend, display raw mapped value
+          compEl.innerHTML = mappedValue.toFixed(2)
+        }
+
+      } else {
+        // SIMPLE mode: existing logic
+        const operator = compEl.getAttribute('data-comparison-operator')
+        const hasLegend = compEl.getAttribute('data-has-legend')
+        const legendId = compEl.getAttribute('data-legend-id')
+        const legendType = compEl.getAttribute('data-legend-type')
+
+        // Perform comparison
+        const { compareIndicators, formatComparisonResult } = require('./comparisonFunctions')
+        const result = compareIndicators(
+          primaryData?.value,
+          comparisonData?.value,
+          operator
+        )
+
+        // Apply legend or raw value
+        if (hasLegend === "YES" && result !== null && legendId && legendType) {
+          // Apply legend transformation
+          switch (legendType) {
+            case "color":
+              checkColorLegend(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              break
+
+            case "label":
+              checkLabelLegend(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              break
+
+            case "image":
+              checkImageLegend(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              break
+
+            case "pie":
+              drawCamember(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              break
+
+            default:
+              compEl.innerHTML = formatComparisonResult(result, operator)
+              break
+          }
+        } else {
+          // Raw value display
+          compEl.innerHTML = formatComparisonResult(result, operator)
+        }
+      }
+    }
+
+    // Log unmatched data values for debugging
+    const unmatchedDataValues = dataValues.filter(dv => {
+      const el = dv.categoryOptionCombo ? `${dv.dataElement}.${dv.categoryOptionCombo}` : dv.dataElement
+      return !matchedDataValues.has(`${el}|${dv.orgUnit}`)
+    })
+
+    // Print legend injection summary
+    console.log(`\n${'='.repeat(80)}`)
+    console.log(`LEGEND INJECTION SUMMARY`)
+    console.log(`${'='.repeat(80)}`)
+    console.log(`Total data values received: ${dataValues.length}`)
+    console.log(`Successfully matched to DOM: ${matchedDataValues.size}`)
+    console.log(`Failed to match: ${unmatchedDataValues.length}`)
+
+    // Show indicators with period offsets that were filtered
+    const offsetIndicators = Object.keys(indicatorMetadata)
+    if (offsetIndicators.length > 0) {
+      console.log(`\nIndicators with Period Offsets (period filtering applied):`)
+      offsetIndicators.forEach(id => {
+        const meta = indicatorMetadata[id]
+        const minOffset = Math.min(...meta.offsets)
+        const effectivePeriod = calculateEffectivePeriod(period, periodType, minOffset)
+        console.log(`  - ${meta.name} (${id}):`)
+        console.log(`    Data period: ${formatPeriodForAnalytic(period, periodType)}`)
+        console.log(`    Legend period: ${formatPeriodForAnalytic(effectivePeriod, periodType)} (offset: ${minOffset})`)
+      })
+    }
+
+    if (unmatchedDataValues.length > 0) {
+      console.log(`\nUnmatched Data Values:`)
+      unmatchedDataValues.forEach((dv, idx) => {
+        if (idx < 10) { // Log first 10 to avoid console spam
+          const el = dv.categoryOptionCombo ? `${dv.dataElement}.${dv.categoryOptionCombo}` : dv.dataElement
+          console.log(`  - ${el} | ${dv.orgUnit} | period ${dv.period} = ${dv.value}`)
+        }
+      })
+      if (unmatchedDataValues.length > 10) {
+        console.log(`  ... and ${unmatchedDataValues.length - 10} more`)
+      }
+    }
+    console.log(`${'='.repeat(80)}\n`)
   }
 
 }
 
 export const generateTreeFromOrgUnits = (ouList = [], icon = null, parentId = null, level = 1, setLoading) => {
-  setLoading && setLoading(true)
+  // Don't set loading here - org units are already loaded at app startup
   let orgUnits = ouList.map(o => {
     return {
       key: o.id,
@@ -653,51 +939,80 @@ export const generateTreeFromOrgUnits = (ouList = [], icon = null, parentId = nu
 }
 
 export const getOrgUnitIdFromParentString = (parent_string, selectedOU, orgUnits, orgUnitLevels) => {
-  if (parent_string) {
-    if (parent_string === CURRENT) {
-      return orgUnits.find(ou => ou.id === selectedOU)
-    } else {
-      if (orgUnitLevels && orgUnitLevels.length > 0) {
-        //  récuperation de l'object selected ou
-        const selectedOu_object = orgUnits.find(ou => ou.id === selectedOU)
+  if (!parent_string) {
+    return null
+  }
 
-        // Récuperation de l'index
-        const parent_string_index = parent_string.split('_')?.[1]
+  // Handle direct "CURRENT" reference
+  if (parent_string === CURRENT) {
+    const current = orgUnits.find(ou => ou.id === selectedOU)
+    if (!current) {
+      console.warn(`[Report Builder] Selected org unit ${selectedOU} not found in orgUnits list`)
+    }
+    return current
+  }
 
-        let corresponding_parent_level = null
+  // Handle "PARENT_X" pattern
+  if (!orgUnitLevels || orgUnitLevels.length === 0) {
+    console.warn('[Report Builder] orgUnitLevels is empty, cannot resolve parent string:', parent_string)
+    return null
+  }
 
-        // recuperation du level du parent potentiel 
-        if ((selectedOu_object.level - parent_string_index) > 0) {
-          corresponding_parent_level = selectedOu_object.level - parent_string_index
-        }
+  const selectedOu_object = orgUnits.find(ou => ou.id === selectedOU)
+  if (!selectedOu_object) {
+    console.warn(`[Report Builder] Selected org unit ${selectedOU} not found`)
+    return null
+  }
 
-        // vérification dans le passe du selected ou s'il y a un parent avec le corresponding_parent_level trouver
-        if (corresponding_parent_level) {
-          const selectedOu_parent_path_list = selectedOu_object.path.split('/')
-          let new_selectOU_parent_path_list = []
-          for (let path_id of selectedOu_parent_path_list) {
-            const newObject = orgUnits.find(ou => ou.id === path_id)
-            if (newObject) {
-              new_selectOU_parent_path_list.push(newObject)
-            }
-          }
+  // Parse parent index (e.g., "PARENT_1" -> 1)
+  const parent_string_index = parseInt(parent_string.split('_')?.[1])
+  if (isNaN(parent_string_index)) {
+    console.warn(`[Report Builder] Invalid parent string format: ${parent_string}`)
+    return null
+  }
 
-          // recherche du parent trouver
-          const parent_found = new_selectOU_parent_path_list.find(ou => ou.level === corresponding_parent_level)
-          return parent_found
-        }
+  // Calculate parent level
+  const corresponding_parent_level = selectedOu_object.level - parent_string_index
+  if (corresponding_parent_level <= 0) {
+    // Requesting parent beyond root level
+    return null
+  }
 
-      }
+  // Find parent in org unit path
+  if (!selectedOu_object.path) {
+    console.warn(`[Report Builder] Selected org unit ${selectedOU} has no path`)
+    return null
+  }
+
+  const selectedOu_parent_path_list = selectedOu_object.path.split('/').filter(Boolean)
+  const new_selectOU_parent_path_list = []
+
+  for (let path_id of selectedOu_parent_path_list) {
+    const newObject = orgUnits.find(ou => ou.id === path_id)
+    if (newObject) {
+      new_selectOU_parent_path_list.push(newObject)
     }
   }
+
+  const parent_found = new_selectOU_parent_path_list.find(ou => ou.level === corresponding_parent_level)
+  if (!parent_found) {
+    console.warn(`[Report Builder] No parent found at level ${corresponding_parent_level} for org unit ${selectedOU} (${selectedOu_object.name})`)
+  }
+
+  return parent_found || null
 }
 
 export const getOrgUnitParentFromHtml = (selectedOU, orgUnits, orgUnitLevels) => {
   let uid_list = []
-  const id_html_list = document.querySelector('[id="my-table-container"]')?.querySelectorAll("[data-type='AGGREGATE']") || []
+  const container = document.querySelector('[id="my-table-container"]')
 
-  if (id_html_list && id_html_list.length > 0) {
-    for (let id_html of id_html_list) {
+  // Get both regular aggregate elements and comparison elements
+  const aggregateElements = container?.querySelectorAll("[data-type='AGGREGATE']") || []
+  const comparisonElements = container?.querySelectorAll("[data-type='AGGREGATE_COMPARISON']") || []
+
+  // Process regular aggregate elements
+  if (aggregateElements && aggregateElements.length > 0) {
+    for (let id_html of aggregateElements) {
       const id_string = id_html.getAttribute('id')
       if (id_string) {
         const orgUnit_parent_name = id_string.split('|')?.[1]
@@ -712,6 +1027,23 @@ export const getOrgUnitParentFromHtml = (selectedOU, orgUnits, orgUnitLevels) =>
       }
     }
   }
+
+  // Process comparison elements
+  if (comparisonElements && comparisonElements.length > 0) {
+    for (let compEl of comparisonElements) {
+      const ouLevel = compEl.getAttribute('data-ou-level')
+      if (ouLevel) {
+        const parent_object = getOrgUnitIdFromParentString(ouLevel, selectedOU, orgUnits, orgUnitLevels)
+        if (parent_object) {
+          if (!uid_list.includes(parent_object.id)) {
+            uid_list.push(parent_object.id)
+          }
+        }
+      }
+    }
+  }
+
+  console.log(`[Report Builder] Extracted ${uid_list.length} org unit IDs from HTML (${aggregateElements.length} aggregate + ${comparisonElements.length} comparison elements)`)
 
   return uid_list
 }
@@ -748,7 +1080,7 @@ export const getAggregateDimensionsList = report => {
   return dimensions
 }
 
-export const cleanAggrateDimensionData = (report, dimensions, period, periodType, selectedOU, orgUnits, orgUnitLevels, legendContentList, organisationUnitGroups) => {
+export const cleanAggrateDimensionData = (report, dimensions, period, periodType, selectedOU, orgUnits, orgUnitLevels, legendContentList, organisationUnitGroups, indicatorMetadata = {}) => {
   if (report) {
     const aggregateElements = document.querySelectorAll('[data-type="AGGREGATE"]')
     for (let el of aggregateElements) {
@@ -764,8 +1096,15 @@ export const cleanAggrateDimensionData = (report, dimensions, period, periodType
       for (let d of dimensions) {
         if (el_ID?.includes(d) && legend_id) {
 
+          // Calculate effective period for this dimension if it has offsets
+          let effectivePeriod = period
+          if (indicatorMetadata[d]) {
+            const minOffset = Math.min(...indicatorMetadata[d].offsets)
+            effectivePeriod = calculateEffectivePeriod(period, periodType, minOffset)
+          }
+
           const current_legend_parent = legendContentList.find(leg => leg.id === legend_id)
-          const current_legend = findTheRightLegend(current_legend_parent, period, periodType)
+          const current_legend = findTheRightLegend(current_legend_parent, effectivePeriod, periodType)
 
           if (current_legend_parent && current_legend) {
             if (!data_has_organisationUnitGroup || data_has_organisationUnitGroup === "NO") {// ====> VALEUR MANQUANTE
@@ -874,7 +1213,18 @@ export const loadDataStore = async (key_string, setLoading, setState, payload = 
     return data
   } catch (err) {
     setLoading && setLoading(false)
-    await createDataToDataStore(key_string, payload ? payload : [])
+    const defaultValue = payload ? payload : []
+    setState && setState(defaultValue)
+
+    // Don't let POST failure block returning the default value
+    try {
+      await createDataToDataStore(key_string, defaultValue)
+    } catch (createError) {
+      // Log but don't throw - we still want to return defaultValue
+      console.error(`Failed to create datastore key ${key_string}:`, createError)
+    }
+
+    return defaultValue  // Always executes, regardless of POST outcome
   }
 }
 
@@ -954,4 +1304,178 @@ export const formatPeriodForAnalytic = (period, periodType) => {
     return dayjs(period).format('YYYY')
   if (periodType === MONTH)
     return dayjs(period).format('YYYYMM')
+}
+
+/**
+ * Extract period offsets from indicator expressions (numerator/denominator)
+ * DHIS2 indicators can reference previous periods using syntax like:
+ * - "#{dataElement}.periodOffset(-1)" for 1 month back
+ * - "#{dataElement}.periodOffset(-12)" for 12 months back
+ * @param {string} expression - The indicator numerator or denominator expression
+ * @returns {number[]} Array of unique period offsets found (e.g., [-1, -12])
+ */
+export const extractPeriodOffsets = (expression) => {
+  if (!expression) return []
+
+  // Updated regex to handle optional whitespace around the offset number
+  // Matches both .periodOffset(-1) and .periodOffset( -1 ) with spaces
+  const offsetPattern = /\.periodOffset\(\s*(-?\d+)\s*\)/g
+  const offsets = []
+  let match
+
+  while ((match = offsetPattern.exec(expression)) !== null) {
+    const offset = parseInt(match[1])
+    if (!offsets.includes(offset)) {
+      offsets.push(offset)
+    }
+  }
+
+  return offsets.sort((a, b) => a - b) // Sort from most negative to positive
+}
+
+/**
+ * Build period range string for analytics API when indicator has period offsets
+ * @param {string} basePeriod - User-selected period (e.g., "2024-01-01")
+ * @param {string} periodType - Period type (YEAR, MONTH, DAY)
+ * @param {number[]} offsets - Array of period offsets (e.g., [-1, 0])
+ * @returns {string} Semicolon-separated period string (e.g., "202312;202401")
+ */
+export const buildPeriodRangeForOffset = (basePeriod, periodType, offsets) => {
+  if (!offsets || offsets.length === 0) {
+    return formatPeriodForAnalytic(basePeriod, periodType)
+  }
+
+  const periods = offsets.map(offset => {
+    let adjustedPeriod = dayjs(basePeriod)
+
+    if (periodType === MONTH) {
+      adjustedPeriod = adjustedPeriod.add(offset, 'month')
+      return adjustedPeriod.format('YYYYMM')
+    } else if (periodType === YEAR) {
+      adjustedPeriod = adjustedPeriod.add(offset, 'year')
+      return adjustedPeriod.format('YYYY')
+    } else if (periodType === DAY) {
+      adjustedPeriod = adjustedPeriod.add(offset, 'day')
+      return adjustedPeriod.format('YYYYMMDD')
+    }
+
+    return formatPeriodForAnalytic(adjustedPeriod.toDate(), periodType)
+  })
+
+  // Always include the base period
+  const basePeriodFormatted = formatPeriodForAnalytic(basePeriod, periodType)
+  if (!periods.includes(basePeriodFormatted)) {
+    periods.push(basePeriodFormatted)
+  }
+
+  return [...new Set(periods)].sort().join(';')
+}
+
+/**
+ * Calculate the effective period for legend matching when indicator has period offset
+ * For indicators with offsets, the legend should match the period used in calculation,
+ * not the user-selected period.
+ * @param {string} basePeriod - User-selected period (e.g., "2024-01-01")
+ * @param {string} periodType - Period type (YEAR, MONTH, DAY)
+ * @param {number} offset - Period offset (e.g., -1 for previous month, 0 for current)
+ * @returns {Date} Effective period date for legend matching
+ */
+export const calculateEffectivePeriod = (basePeriod, periodType, offset = 0) => {
+  if (offset === 0) {
+    return basePeriod
+  }
+
+  let adjustedPeriod = dayjs(basePeriod)
+
+  if (periodType === MONTH) {
+    adjustedPeriod = adjustedPeriod.add(offset, 'month')
+  } else if (periodType === YEAR) {
+    adjustedPeriod = adjustedPeriod.add(offset, 'year')
+  } else if (periodType === DAY) {
+    adjustedPeriod = adjustedPeriod.add(offset, 'day')
+  }
+
+  return adjustedPeriod.toDate()
+}
+
+/**
+ * Calculate period with offset applied
+ *
+ * @param {string|Date} basePeriod - Base period from which to calculate offset
+ * @param {string} periodType - Type of period (MONTH, YEAR, QUARTER, WEEK, DAY)
+ * @param {number} offset - Period offset (0 = current, -1 = previous, -12 = year ago, etc.)
+ * @returns {string} - Formatted period string for DHIS2 Analytics API
+ */
+export const calculateOffsetPeriod = (basePeriod, periodType, offset) => {
+  if (!offset || offset === 0) {
+    // No offset, just format the base period
+    return formatPeriodForAnalytic(basePeriod, periodType)
+  }
+
+  let adjustedPeriod = dayjs(basePeriod)
+
+  switch (periodType) {
+    case MONTH:
+      adjustedPeriod = adjustedPeriod.add(offset, 'month')
+      return adjustedPeriod.format('YYYYMM')
+
+    case YEAR:
+      adjustedPeriod = adjustedPeriod.add(offset, 'year')
+      return adjustedPeriod.format('YYYY')
+
+    case QUARTERLY:
+      adjustedPeriod = adjustedPeriod.add(offset * 3, 'month')
+      const quarter = adjustedPeriod.quarter()
+      return `${adjustedPeriod.year()}Q${quarter}`
+
+    case WEEK:
+    case WEEKLY:
+      adjustedPeriod = adjustedPeriod.add(offset, 'week')
+      const week = adjustedPeriod.week()
+      return `${adjustedPeriod.year()}W${week.toString().padStart(2, '0')}`
+
+    case DAY:
+      adjustedPeriod = adjustedPeriod.add(offset, 'day')
+      return adjustedPeriod.format('YYYYMMDD')
+
+    default:
+      console.warn(`[Report Builder] Unknown period type for offset calculation: ${periodType}`)
+      return formatPeriodForAnalytic(basePeriod, periodType)
+  }
+}
+
+/**
+ * Extract comparison dimensions from HTML template with their period offsets
+ *
+ * @param {string} html_code - HTML template code
+ * @returns {Array<{id: string, offset: number}>} - Array of dimension objects with offsets
+ */
+export const getComparisonDimensionsListWithOffsets = (html_code) => {
+  if (!html_code) {
+    return []
+  }
+
+  const parser = new DOMParser()
+  const doc = parser.parseFromString(html_code, "text/html")
+
+  const comparisonElements = doc.querySelectorAll('[data-type="AGGREGATE_COMPARISON"]')
+
+  const dimensionsWithOffsets = []
+  for (let el of comparisonElements) {
+    const primaryId = el.getAttribute('data-primary-id')
+    const primaryOffset = parseInt(el.getAttribute('data-primary-offset') || '0')
+    const comparisonId = el.getAttribute('data-comparison-id')
+    const comparisonOffset = parseInt(el.getAttribute('data-comparison-offset') || '0')
+
+    if (primaryId) {
+      dimensionsWithOffsets.push({ id: primaryId, offset: primaryOffset })
+    }
+    if (comparisonId) {
+      dimensionsWithOffsets.push({ id: comparisonId, offset: comparisonOffset })
+    }
+  }
+
+  console.log(`[Report Builder] Extracted ${dimensionsWithOffsets.length} comparison dimensions with offsets:`, dimensionsWithOffsets)
+
+  return dimensionsWithOffsets
 }

@@ -98,7 +98,7 @@ const SmsConfigPage = ({
             if (response.status === "ERROR")
                 throw response
 
-            const programs = response.programs.map(p => ({ ...p, programTrackedEntityAttributes: p.programTrackedEntityAttributes.map(at => ({ ...at, programType: p.programType, program: p.id })) }))
+            const programs = response.programs.map(p => ({ ...p, programTrackedEntityAttributes: (p.programTrackedEntityAttributes || []).map(at => ({ ...at, programType: p.programType, program: p.id })) }))
             setLoadingPrograms(false)
             setPrograms(programs)
         } catch (err) {
@@ -142,8 +142,8 @@ const SmsConfigPage = ({
                 {
                     selectedProgram?.programTrackedEntityAttributes?.length > 0 && <div className="mt-2">
                         <Field label="Select Attribute ">
-                            <SingleSelect placeholder="program attribute " selected={selectedAttribute?.id} onChange={({ selected }) => setSelectedAttribute(selectedProgram.programTrackedEntityAttributes.map(p => p.trackedEntityAttribute)?.find(at => at.id === selected))} >
-                                {selectedProgram.programTrackedEntityAttributes.map(p => (
+                            <SingleSelect placeholder="program attribute " selected={selectedAttribute?.id} onChange={({ selected }) => setSelectedAttribute((selectedProgram.programTrackedEntityAttributes || []).map(p => p.trackedEntityAttribute)?.find(at => at.id === selected))} >
+                                {(selectedProgram.programTrackedEntityAttributes || []).map(p => (
                                     <SingleSelectOption value={p.trackedEntityAttribute?.id} key={p.trackedEntityAttribute?.id} label={p.trackedEntityAttribute?.name} />
                                 ))}
                             </SingleSelect>

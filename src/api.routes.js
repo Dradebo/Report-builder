@@ -1,7 +1,14 @@
 const FULL_ROUTE = window.location.href
 
 export const APP_NAME = "report-builder"
-export const API_BASE_ROUTE = FULL_ROUTE.substring(0, FULL_ROUTE.indexOf('/apps/'.concat(APP_NAME).concat('/')))
+
+// Check if running locally (development)
+const isLocalDev = FULL_ROUTE.indexOf('localhost') > -1 || FULL_ROUTE.indexOf('127.0.0.1') > -1
+
+// Use /api for local dev (goes through proxy), extract dynamically for production
+export const API_BASE_ROUTE = isLocalDev
+    ? '/api'
+    : FULL_ROUTE.substring(0, FULL_ROUTE.indexOf('/apps/'.concat(APP_NAME).concat('/')))
 export const SERVER_URL = FULL_ROUTE.substring(0, FULL_ROUTE.indexOf('/api/apps/'.concat(APP_NAME)))
 export const ORGANISATION_UNITS_ROUTE = API_BASE_ROUTE.concat('/organisationUnits.json?paging=false&fields=id,name,displayName,parent,level')
 export const SUPERVISORS_ROUTE = API_BASE_ROUTE.concat('/users.json')
@@ -12,6 +19,7 @@ export const PERIOD_TYPE_ROUTE = API_BASE_ROUTE.concat('/periodTypes.json?paging
 export const ORGANISATION_UNIT_LEVELS_ROUTE = API_BASE_ROUTE.concat('/organisationUnitLevels.json?paging=false&fields=id,name,level')
 export const DATA_ELEMENTS_ROUTE = API_BASE_ROUTE.concat('/dataElements.json?paging=false&fields=id,name,domainType,dimensionItemType')
 export const INDICATORS_ROUTE = API_BASE_ROUTE.concat('/indicators.json?paging=false&fields=id,name,dimensionItemType')
+export const INDICATORS_METADATA_ROUTE = API_BASE_ROUTE.concat('/indicators.json?paging=false&fields=id,name,numerator,denominator,indicatorType')
 export const PROGRAM_INDICATORS_ROUTE = API_BASE_ROUTE.concat('/programIndicators.json?paging=false&fields=id,name,dimensionItemType,trackedEntityAttribute')
 export const PROGRAMS_ROUTE = API_BASE_ROUTE.concat('/programs.json?paging=false&fields=id,name')
 export const USER_GROUPS_ROUTE = API_BASE_ROUTE.concat('/userGroups.json?paging=false')
