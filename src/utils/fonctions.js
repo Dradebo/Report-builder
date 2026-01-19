@@ -437,9 +437,30 @@ export const inject_tei_into_html = (report, current_tei, selectedProgramTracker
   }
 }
 
+const runStaggeredUpdates = (updates, options = {}) => {
+  if (!updates || updates.length === 0) {
+    return
+  }
+
+  const delay = Number.isFinite(options.delay) ? options.delay : 20
+  const maxTotal = Number.isFinite(options.maxTotal) ? options.maxTotal : 1500
+  const totalDelay = Math.min(maxTotal, delay * updates.length)
+  const step = updates.length > 1 ? Math.floor(totalDelay / updates.length) : 0
+
+  updates.forEach((update, index) => {
+    const time = step * index
+    if (time === 0) {
+      update()
+    } else {
+      setTimeout(update, time)
+    }
+  })
+}
+
 export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selectedOrgUnit, period, periodType, setNotif, legendContentList, indicatorMetadata = {}) => {
   if (selectedOrgUnit) {
     let my_container = document.querySelector('[id="my-table-container"]')
+    const staggeredUpdates = []
 
     // Track matched and unmatched data for debugging
     const matchedDataValues = new Set()
@@ -482,10 +503,9 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
               el === dx_id &&
               orgUnit === getOrgUnitIdFromParentString(ou_id, selectedOrgUnit, orgUnits, levels)?.id
             ) {
-
-              html_el.innerHTML = ""
-
-              injectFromId(html_ID, value)
+              staggeredUpdates.push(() => {
+                injectFromId(html_ID, value)
+              })
 
               // Track this data value as matched
               matchedDataValues.add(`${el}|${orgUnit}`)
@@ -555,19 +575,27 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
 
               switch (legend_type) {
                 case "color":
-                  checkColorLegend(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
+                  staggeredUpdates.push(() => {
+                    checkColorLegend(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
+                  })
                   break
 
                 case "label":
-                  checkLabelLegend(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
+                  staggeredUpdates.push(() => {
+                    checkLabelLegend(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
+                  })
                   break
 
                 case "image":
-                  checkImageLegend(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
+                  staggeredUpdates.push(() => {
+                    checkImageLegend(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
+                  })
                   break
 
                 case "pie":
-                  drawCamember(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
+                  staggeredUpdates.push(() => {
+                    drawCamember(legend_id, html_ID, value, effectivePeriod, setNotif, periodType, legendContentList)
+                  })
                   break
 
                 default:
@@ -601,6 +629,8 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
       const ouLevel = compEl.getAttribute('data-ou-level')
 
       if (!primaryId || !comparisonId) continue
+
+      compEl.classList.add('comparison-indicator-centered')
 
       // Resolve org unit
       const resolvedOrgUnit = getOrgUnitIdFromParentString(
@@ -649,7 +679,9 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
         const conditionsJson = compEl.getAttribute('data-conditions')
         if (!conditionsJson) {
           console.warn('[Report Builder] CONDITIONAL mode but no conditions data attribute found')
-          compEl.innerHTML = 'N/A'
+          staggeredUpdates.push(() => {
+            compEl.innerHTML = 'N/A'
+          })
           continue
         }
 
@@ -668,7 +700,9 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
           console.error('[Report Builder] Failed to parse conditions JSON:', error)
           console.error('[Report Builder] Raw conditionsJson:', conditionsJson)
           console.error('[Report Builder] Decoded value:', decoded)
-          compEl.innerHTML = 'N/A'
+          staggeredUpdates.push(() => {
+            compEl.innerHTML = 'N/A'
+          })
           continue
         }
 
@@ -681,7 +715,9 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
         )
 
         if (mappedValue === null) {
-          compEl.innerHTML = 'N/A'
+          staggeredUpdates.push(() => {
+            compEl.innerHTML = 'N/A'
+          })
           continue
         }
 
@@ -695,28 +731,40 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
 
           switch (legendType) {
             case "color":
-              checkColorLegend(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              staggeredUpdates.push(() => {
+                checkColorLegend(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              })
               break
 
             case "label":
-              checkLabelLegend(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              staggeredUpdates.push(() => {
+                checkLabelLegend(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              })
               break
 
             case "image":
-              checkImageLegend(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              staggeredUpdates.push(() => {
+                checkImageLegend(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              })
               break
 
             case "pie":
-              drawCamember(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              staggeredUpdates.push(() => {
+                drawCamember(legendId, html_ID, mappedValue, period, setNotif, periodType, legendContentList)
+              })
               break
 
             default:
-              compEl.innerHTML = mappedValue.toFixed(2)
+              staggeredUpdates.push(() => {
+                compEl.innerHTML = mappedValue.toFixed(2)
+              })
               break
           }
         } else {
           // No legend, display raw mapped value
-          compEl.innerHTML = mappedValue.toFixed(2)
+          staggeredUpdates.push(() => {
+            compEl.innerHTML = mappedValue.toFixed(2)
+          })
         }
 
       } else {
@@ -739,31 +787,45 @@ export const injectDataIntoHtml = (dataValues, { html }, orgUnits, levels, selec
           // Apply legend transformation
           switch (legendType) {
             case "color":
-              checkColorLegend(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              staggeredUpdates.push(() => {
+                checkColorLegend(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              })
               break
 
             case "label":
-              checkLabelLegend(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              staggeredUpdates.push(() => {
+                checkLabelLegend(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              })
               break
 
             case "image":
-              checkImageLegend(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              staggeredUpdates.push(() => {
+                checkImageLegend(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              })
               break
 
             case "pie":
-              drawCamember(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              staggeredUpdates.push(() => {
+                drawCamember(legendId, html_ID, result, period, setNotif, periodType, legendContentList)
+              })
               break
 
             default:
-              compEl.innerHTML = formatComparisonResult(result, operator)
+              staggeredUpdates.push(() => {
+                compEl.innerHTML = formatComparisonResult(result, operator)
+              })
               break
           }
         } else {
           // Raw value display
-          compEl.innerHTML = formatComparisonResult(result, operator)
+          staggeredUpdates.push(() => {
+            compEl.innerHTML = formatComparisonResult(result, operator)
+          })
         }
       }
     }
+
+    runStaggeredUpdates(staggeredUpdates)
 
     // Log unmatched data values for debugging
     const unmatchedDataValues = dataValues.filter(dv => {
@@ -817,6 +879,7 @@ export const generateTreeFromOrgUnits = (ouList = [], icon = null, parentId = nu
     id: o.id,
     label: o.displayName,
     title: o.displayName,
+    searchLabel: (o.displayName || '').toLowerCase(),
     data: o,
     level: o.level,
     value: o.id,

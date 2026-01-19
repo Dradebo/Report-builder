@@ -185,6 +185,11 @@ const DesignsPage = ({
   const selectedElementType = currentHtmlTagSelected?.getAttribute?.('data-type')
   const selectedElementId = currentHtmlTagSelected?.getAttribute?.('id')
   const selectedElementText = currentHtmlTagSelected?.textContent
+  const canEditSelectedElement = [
+    AGGREGATE.value,
+    'AGGREGATE_COMPARISON',
+    TRACKER.value,
+  ].includes(selectedElementType)
 
   const initSummernote = (existing_html) => {
     window.$(document).ready(function () {
@@ -558,6 +563,213 @@ const DesignsPage = ({
 
   }
 
+  const decodeComparisonConditions = (value) => {
+    if (!value) {
+      return []
+    }
+
+    try {
+      const decoded = value
+        .replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'")
+        .replace(/&lt;/g, '<')
+        .replace(/&gt;/g, '>')
+        .replace(/&amp;/g, '&')
+      return JSON.parse(decoded)
+    } catch (err) {
+      return []
+    }
+  }
+
+  const findAggregateDimensionById = (dimensionId) => {
+    if (!dimensionId) {
+      return null
+    }
+
+    return (selectedConfigDimensionsAggregate || []).find(dim => getCorrectID(dim) === dimensionId) || null
+  }
+
+  const resolveAggregateDimension = (dimensionId, fallbackName) => {
+    if (!dimensionId) {
+      return null
+    }
+
+    return findAggregateDimensionById(dimensionId) || {
+      id: dimensionId,
+      name: fallbackName || dimensionId,
+    }
+  }
+
+  const findTrackerProgramById = (programId) => {
+    if (!programId) {
+      return null
+    }
+
+    return (selectedTrackerConfigDimensionsPrograms || []).find(program => program.id === programId) || null
+  }
+
+  const applyLegendSelection = ({ legendId, legendType }) => {
+    if (legendId && legendType) {
+      setSelectedRadioTypeLegend('LEGEND')
+      setLegendToUse(legendId)
+      setSelectedTypeLegendToDisplay(legendType)
+    } else {
+      setSelectedRadioTypeLegend('VALUE')
+      setLegendToUse(null)
+      setSelectedTypeLegendToDisplay(null)
+    }
+  }
+
+  const handleEditSelectedHtmlElement = () => {
+    if (!currentHtmlTagSelected || !currentHtmlTagSelected.getAttribute) {
+      return
+    }
+
+    const elementType = currentHtmlTagSelected.getAttribute('data-type')
+    if (!elementType) {
+      return
+    }
+
+    if (elementType === AGGREGATE.value) {
+      const idString = currentHtmlTagSelected.getAttribute('id') || ''
+      const idParts = idString ? idString.split('|') : []
+      const hasLegend = currentHtmlTagSelected.getAttribute('data-has-legend') === 'YES'
+      const hasOuGroup = currentHtmlTagSelected.getAttribute('data-has-organisationunitgroup') === 'YES'
+
+      const dimensionId = idParts[0]
+      const ouLevel = idParts[1]
+      const legendId = hasLegend ? idParts[2] : null
+      const legendType = hasLegend ? idParts[3] : null
+      const ouGroupId = hasLegend
+        ? (hasOuGroup ? idParts[4] : null)
+        : (hasOuGroup ? idParts[2] : null)
+
+      const dimension = resolveAggregateDimension(dimensionId, selectedElementText?.trim())
+
+      setSelectedDimensionContentToDisplay(AGGREGATE.value)
+      setCurrentDimensionSelected(dimension)
+      setSelectedOuLevelToDisplay(ouLevel || null)
+      setSelectedOuGroupToDisplay(ouGroupId || null)
+      applyLegendSelection({ legendId, legendType })
+      setEnableComparison(false)
+      setComparisonIndicator(null)
+      setComparisonMode('SIMPLE')
+      setComparisonConditions([])
+      setPrimaryPeriodOffset('0')
+      setComparisonPeriodOffset('-1')
+      setComparisonOperator('DIFFERENCE')
+      setVisibleSelectDXAggregateModal(true)
+      setVisibleComparisonModal(false)
+      return
+    }
+
+    if (elementType === 'AGGREGATE_COMPARISON') {
+      const primaryId = currentHtmlTagSelected.getAttribute('data-primary-id')
+      const comparisonId = currentHtmlTagSelected.getAttribute('data-comparison-id')
+      const comparisonMode = currentHtmlTagSelected.getAttribute('data-comparison-mode') || 'SIMPLE'
+      const primaryOffset = currentHtmlTagSelected.getAttribute('data-primary-offset') || '0'
+      const comparisonOffset = currentHtmlTagSelected.getAttribute('data-comparison-offset') || '0'
+      const comparisonOperator = currentHtmlTagSelected.getAttribute('data-comparison-operator') || 'DIFFERENCE'
+      const legendId = currentHtmlTagSelected.getAttribute('data-legend-id')
+      const legendType = currentHtmlTagSelected.getAttribute('data-legend-type')
+      const ouLevel = currentHtmlTagSelected.getAttribute('data-ou-level')
+      const hasLegend = currentHtmlTagSelected.getAttribute('data-has-legend') === 'YES'
+
+      const elementText = selectedElementText?.trim() || ''
+      const nameParts = elementText.includes(' vs ') ? elementText.split(' vs ') : []
+      const primaryDimension = resolveAggregateDimension(primaryId, nameParts[0]?.trim())
+      const comparisonDimension = resolveAggregateDimension(comparisonId, nameParts[1]?.trim())
+
+      setSelectedDimensionContentToDisplay(AGGREGATE.value)
+      setCurrentDimensionSelected(primaryDimension)
+      setSelectedOuLevelToDisplay(ouLevel || null)
+      setSelectedOuGroupToDisplay(null)
+      setEnableComparison(true)
+      setComparisonIndicator(comparisonDimension)
+      setComparisonMode(comparisonMode)
+      setPrimaryPeriodOffset(primaryOffset)
+      setComparisonPeriodOffset(comparisonOffset)
+      setComparisonOperator(comparisonOperator)
+
+      if (comparisonMode === 'CONDITIONAL') {
+        setComparisonConditions(decodeComparisonConditions(currentHtmlTagSelected.getAttribute('data-conditions')))
+        applyLegendSelection({ legendId, legendType })
+      } else {
+        if (hasLegend) {
+          applyLegendSelection({ legendId, legendType })
+        } else {
+          applyLegendSelection({ legendId: null, legendType: null })
+        }
+        setComparisonConditions([])
+      }
+
+      setVisibleSelectDXAggregateModal(true)
+      setVisibleComparisonModal(false)
+      return
+    }
+
+    if (elementType === TRACKER.value) {
+      const idString = currentHtmlTagSelected.getAttribute('id') || ''
+      const idParts = idString ? idString.split('|') : []
+      const dataIs = currentHtmlTagSelected.getAttribute('data-is')
+      const hasLegend = currentHtmlTagSelected.getAttribute('data-has-legend') === 'YES'
+
+      const programId = idParts[0]
+      const program = findTrackerProgramById(programId)
+      if (!program) {
+        return
+      }
+
+      setSelectedDimensionContentToDisplay(TRACKER.value)
+      setSelectedProgramToDisplay(program)
+      setSelectedProgramStageToDisplay(null)
+      setSelectedDataElementDimensionToDisplay(null)
+      setSelectedAttributeToDisplay(null)
+      setSelectedAttributeValueTypeToDisplay(null)
+      setSelectedEnrollmentDataToDisplay(null)
+      setEnableComparison(false)
+      setComparisonIndicator(null)
+      setComparisonMode('SIMPLE')
+      setComparisonConditions([])
+
+      if (dataIs === ATTRIBUTE) {
+        const attributeId = idParts[1]
+        const legendId = hasLegend ? idParts[2] : null
+        const legendType = hasLegend ? idParts[3] : null
+        const attribute = (program.programTrackedEntityAttributes || [])
+          .map(pgAtt => pgAtt.trackedEntityAttribute)
+          .find(att => att.id === attributeId)
+
+        setSelectedRadioDataToDisplay(ATTRIBUTE)
+        setSelectedAttributeToDisplay(attribute || null)
+        setSelectedAttributeValueTypeToDisplay(attribute?.valueType || null)
+        applyLegendSelection({ legendId, legendType })
+      } else if (dataIs === DATA_ELEMENT) {
+        const programStageId = idParts[1]
+        const dataElementId = idParts[2]
+        const legendId = hasLegend ? idParts[3] : null
+        const legendType = hasLegend ? idParts[4] : null
+        const programStage = (program.programStages || []).find(stage => stage.id === programStageId)
+        const dataElement = (programStage?.programStageDataElements || [])
+          .map(stage => stage.dataElement)
+          .find(el => el.id === dataElementId)
+
+        setSelectedRadioDataToDisplay(DATA_ELEMENT)
+        setSelectedProgramStageToDisplay(programStage || null)
+        setSelectedDataElementDimensionToDisplay(dataElement || null)
+        applyLegendSelection({ legendId, legendType })
+      } else if (dataIs === ENROLLMENT) {
+        const enrollmentData = idParts[1]
+        setSelectedRadioDataToDisplay(ENROLLMENT)
+        setSelectedEnrollmentDataToDisplay(enrollmentData || null)
+        applyLegendSelection({ legendId: null, legendType: null })
+      }
+
+      setVisibleSelectDXTrackerModal(true)
+      return
+    }
+  }
+
   const handleInjectAggregateIds = () => {
 
     if (currentDimensionSelected) {
@@ -585,7 +797,7 @@ const DesignsPage = ({
           window.$(currentHtmlTagSelected).attr("data-legend-id", legendToUse || '')
           window.$(currentHtmlTagSelected).attr("data-legend-type", selectedTypeLegendToDisplay || '')
           window.$(currentHtmlTagSelected).attr("data-ou-level", selectedOuLevelToDisplay)
-          window.$(currentHtmlTagSelected).attr("class", "comparison-indicator-conditional")
+          window.$(currentHtmlTagSelected).removeClass("comparison-indicator-simple comparison-indicator-conditional")
         } else {
           // SIMPLE mode: set operator-based attributes
           window.$(currentHtmlTagSelected).attr("data-comparison-mode", "SIMPLE")
@@ -598,7 +810,7 @@ const DesignsPage = ({
           window.$(currentHtmlTagSelected).attr("data-legend-id", selectedRadioTypeLegend === 'LEGEND' ? legendToUse || '' : '')
           window.$(currentHtmlTagSelected).attr("data-legend-type", selectedRadioTypeLegend === 'LEGEND' ? selectedTypeLegendToDisplay || '' : '')
           window.$(currentHtmlTagSelected).attr("data-ou-level", selectedOuLevelToDisplay)
-          window.$(currentHtmlTagSelected).attr("class", "comparison-indicator-simple")
+          window.$(currentHtmlTagSelected).removeClass("comparison-indicator-simple comparison-indicator-conditional")
         }
 
         // Set display name (mimics regular indicator behavior)
@@ -1673,23 +1885,28 @@ const DesignsPage = ({
                     {selectedElementText}
                   </div>
                 )}
-                <div className='mt-2'>
-                  <Popconfirm
-                    title="Remove element"
-                    description="Remove the selected element from the report?"
-                    onConfirm={handleClearSelectedHtmlElement}
-                    icon={
-                      <QuestionCircleOutlined
-                        style={{
-                          color: 'red',
-                        }}
-                      />
-                    }
-                  >
-                    <Button small destructive>
-                      Remove selected element
-                    </Button>
-                  </Popconfirm>
+                <div className='mt-2 d-flex'>
+                  <Button small onClick={handleEditSelectedHtmlElement} disabled={!canEditSelectedElement} icon={<BiEdit />}>
+                    Edit selected element
+                  </Button>
+                  <div className='ml-2'>
+                    <Popconfirm
+                      title="Remove element"
+                      description="Remove the selected element from the report?"
+                      onConfirm={handleClearSelectedHtmlElement}
+                      icon={
+                        <QuestionCircleOutlined
+                          style={{
+                            color: 'red',
+                          }}
+                        />
+                      }
+                    >
+                      <Button small destructive>
+                        Remove selected element
+                      </Button>
+                    </Popconfirm>
+                  </div>
                 </div>
               </div>
             )}

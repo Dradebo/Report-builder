@@ -6,24 +6,44 @@
     "auditLog": "/Users/sean/Documents/GitHub/Report-builder/logs/.842815cea25ee4073f3a1646d1c8daa870f09394-audit.json",
     "files": [
         {
-            "date": 1767429304646,
-            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-03.log",
-            "hash": "b20922c5dca013d49cbc3c33264976bd626a05814c73e00ddf5610a605c7f90a"
-        },
-        {
-            "date": 1767490021226,
-            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-04.log",
-            "hash": "f0c309b188f61bb3b34c17782785ca7f0420b2edad4505d58442625407c27e03"
-        },
-        {
-            "date": 1767567666552,
-            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-05.log",
-            "hash": "e04a3a9187ff962c16e8aa77c121d25dc6c98a1246807141439eb574cf3b3bd4"
-        },
-        {
             "date": 1767673956226,
             "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-06.log",
             "hash": "f1b86f83933fc40ac1f8ce04cd375c63dda989bd5a33398a01bf381ab7be23c8"
+        },
+        {
+            "date": 1767760092229,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-07.log",
+            "hash": "0d9f499698c944de2ff2eae40edf66d796c01b60db0ee82a9affde27efab8cdf"
+        },
+        {
+            "date": 1767846570720,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-08.log",
+            "hash": "0d1ca6e5c17003408bc9c1909e31371c9e3cd2cf32ee53fb886a5a21df439796"
+        },
+        {
+            "date": 1767941725998,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-09.log",
+            "hash": "08b066d9c6d953e94a62e575b023d95e8ffd1949e2ebc8543e1882fe711af8ce"
+        },
+        {
+            "date": 1767993072553,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-10.log",
+            "hash": "f9ad054332d8cd21236c7c46c6f4e60ef392adc604dcabc6ad06048fbe39353b"
+        },
+        {
+            "date": 1768192206531,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-12.log",
+            "hash": "17df7e4c023eac9f3f8119849539c54b17f4c541ecd55738b05525d7f91ffe5f"
+        },
+        {
+            "date": 1768284254655,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-13.log",
+            "hash": "523436a219831fa76b9cb8371e90b7e5aa92f86ee44e623780ea8c8ac91280f3"
+        },
+        {
+            "date": 1768798948993,
+            "name": "/Users/sean/Documents/GitHub/Report-builder/logs/mcp-puppeteer-2026-01-19.log",
+            "hash": "f9809183759864ed3b44e783fdd80bdf74edf6f7caf212f5a220349ec4b342da"
         }
     ],
     "hashType": "sha256"

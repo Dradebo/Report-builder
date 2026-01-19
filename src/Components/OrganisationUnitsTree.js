@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useMemo, useState, useEffect } from 'react'
 import { CarryOutOutlined } from "@ant-design/icons"
 import { TreeSelect } from "antd"
 import { CircularLoader } from '@dhis2/ui'
@@ -33,6 +33,8 @@ const OrganisationUnitsTree = ({
 }) => {
   const [tree, setTree] = useState(preGeneratedTree || [])
   const [expandAll, setExpandAll] = useState(false)
+  const [searchValue, setSearchValue] = useState('')
+  const [debouncedSearchValue, setDebouncedSearchValue] = useState('')
 
   // const onInputTextChange = ({ value }) => {
   //   setInputText(''.concat(value))
@@ -66,6 +68,18 @@ const OrganisationUnitsTree = ({
     }
   }, [preGeneratedTree, orgUnits, meOrgUnitId])
 
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchValue(searchValue)
+    }, 200)
+
+    return () => clearTimeout(timer)
+  }, [searchValue])
+
+  const normalizedSearchValue = useMemo(() => {
+    return (debouncedSearchValue || '').trim().toLowerCase()
+  }, [debouncedSearchValue])
+
   return (
     <div>
       {
@@ -94,13 +108,15 @@ const OrganisationUnitsTree = ({
                 disabled={loadingOrganisationUnits}
                 value={currentOrgUnits?.length > 0 ? currentOrgUnits[0].id : null}
                 onChange={value => setCurrentOrgUnits(orgUnits.filter(ou => ou.id === value))}
+                onSearch={value => setSearchValue(value)}
                 treeData={tree}
                 filterTreeNode={(inputValue, node) => {
-                  if (inputValue?.trim()?.length > 0) {
-                    return node?.title?.trim()?.toLowerCase()?.indexOf(inputValue?.trim()?.toLowerCase()) > -1
-                  } else {
+                  if (!normalizedSearchValue) {
                     return true
                   }
+
+                  const label = node?.searchLabel || ''
+                  return label.includes(normalizedSearchValue)
                 }}
               />
             </div>
